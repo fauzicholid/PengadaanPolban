@@ -1,0 +1,734 @@
+// Sistem Informasi Pengadaan Barang/Jasa - Politeknik Negeri Bandung (Polban)
+// Skema data diturunkan dari PRD v1.0 dan SRS/ERD PostgreSQL v1.0.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// ENUMS
+// ---------------------------------------------------------------------------
+
+enum RoleCode {
+  ADMIN
+  KPA
+  PPK
+  STAF_PPK
+  PEJABAT_PENGADAAN
+  SPI
+  PENYEDIA
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum VendorStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  REVISION
+  VERIFIED
+  REJECTED
+  SUSPENDED
+  EXPIRED
+}
+
+enum DocumentStatus {
+  DRAFT
+  UPLOADED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  FINAL
+}
+
+enum PackageStatus {
+  DRAFT
+  RUP
+  PERSIAPAN
+  REVIU
+  PEMILIHAN
+  EVALUASI
+  NEGOSIASI
+  KONTRAK
+  PELAKSANAAN
+  SERAH_TERIMA
+  SELESAI
+  DIBATALKAN
+}
+
+enum StageCode {
+  RUP
+  PERSIAPAN
+  REVIU
+  PEMILIHAN
+  EVALUASI
+  NEGOSIASI
+  KONTRAK
+  PELAKSANAAN
+  BAST
+}
+
+enum StageStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  WAITING_DOCUMENT
+  WAITING_APPROVAL
+  REVISION
+  DUE_SOON
+  OVERDUE
+  COMPLETED
+  CANCELLED
+}
+
+enum ApprovalDecision {
+  APPROVED
+  REVISION
+  REJECTED
+}
+
+enum BidStatus {
+  DRAFT
+  SUBMITTED
+  ADMINISTRATION_PASSED
+  ADMINISTRATION_FAILED
+  TECHNICAL_PASSED
+  TECHNICAL_FAILED
+  PRICE_EVALUATED
+  WINNER
+  LOSER
+  WITHDRAWN
+}
+
+enum ContractStatus {
+  DRAFT
+  ACTIVE
+  ADDENDUM
+  COMPLETED
+  TERMINATED
+}
+
+enum SpiRequestType {
+  REQUEST
+  RISK_BASED
+}
+
+enum SpiReviewStatus {
+  NOT_REVIEWED
+  UNDER_REVIEW
+  CLARIFICATION
+  FOLLOW_UP_REQUIRED
+  FOLLOW_UP_PROCESS
+  FOLLOW_UP_VERIFICATION
+  CLOSED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum FindingStatus {
+  FOLLOW_UP_REQUIRED
+  FOLLOW_UP_PROCESS
+  FOLLOW_UP_VERIFICATION
+  RESOLVED
+  REVISION
+}
+
+enum FollowupVerification {
+  WAITING_VERIFICATION
+  VERIFIED
+  REVISION
+}
+
+enum NotificationType {
+  VENDOR_VERIFICATION
+  DOCUMENT_EXPIRING
+  PACKAGE_SUBMITTED
+  PACKAGE_RETURNED
+  PACKAGE_APPROVED
+  DOCUMENT_MISSING
+  DEADLINE_APPROACHING
+  DEADLINE_OVERDUE
+  REVIEW_REQUEST
+  SPI_FINDING
+  FOLLOWUP_DUE
+  CONTRACT_ENDING
+  GENERAL
+}
+
+// ---------------------------------------------------------------------------
+// IAM & ORGANISASI
+// ---------------------------------------------------------------------------
+
+model Organization {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  workUnits WorkUnit[]
+
+  @@map("organizations")
+}
+
+model WorkUnit {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  parentId       String?  @map("parent_id")
+  code           String
+  name           String
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  parent       WorkUnit?    @relation("WorkUnitParent", fields: [parentId], references: [id])
+  children     WorkUnit[]   @relation("WorkUnitParent")
+  appointments Appointment[]
+  rups         Rup[]
+
+  @@unique([organizationId, code])
+  @@map("work_units")
+}
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  fullName     String     @map("full_name")
+  passwordHash String     @map("password_hash")
+  phone        String?
+  status       UserStatus @default(ACTIVE)
+  mfaEnabled   Boolean    @default(false) @map("mfa_enabled")
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  appointments        Appointment[]
+  vendorUsers         VendorUser[]
+  pkgAsPpk             ProcurementPackage[]      @relation("PackagePpk")
+  stagesAsPic          PackageStage[]            @relation("StagePic")
+  stageApprovals       StageApproval[]
+  uploadedStageDocs    StageDocument[]           @relation("StageDocUploader")
+  uploadedVendorDocs   VendorLegalDocument[]     @relation("VendorDocUploader")
+  vendorVerifications  VendorVerification[]      @relation("VendorVerifier")
+  spiRequestsMade      SpiReviewRequest[]        @relation("SpiRequester")
+  spiReviewsAsReviewer SpiReview[]                @relation("SpiReviewer")
+  spiFindingsAsPic     SpiFinding[]              @relation("FindingPic")
+  spiFollowupsSubmitted SpiFollowup[]            @relation("FollowupSubmitter")
+  spiFollowupsVerified  SpiFollowup[]            @relation("FollowupVerifier")
+  auditLogs            AuditLog[]
+  notifications        Notification[]
+
+  @@map("users")
+}
+
+model Role {
+  id   String   @id @default(uuid())
+  code RoleCode @unique
+  name String
+
+  permissions  RolePermission[]
+  appointments Appointment[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id   String @id @default(uuid())
+  code String @unique
+  name String
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String @map("role_id")
+  permissionId String @map("permission_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model Appointment {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  roleId     String    @map("role_id")
+  workUnitId String    @map("work_unit_id")
+  skNumber   String?   @map("sk_number")
+  validFrom  DateTime  @default(now()) @map("valid_from")
+  validTo    DateTime? @map("valid_to")
+  active     Boolean   @default(true)
+
+  user     User     @relation(fields: [userId], references: [id])
+  role     Role     @relation(fields: [roleId], references: [id])
+  workUnit WorkUnit @relation(fields: [workUnitId], references: [id])
+
+  @@map("appointments")
+}
+
+// ---------------------------------------------------------------------------
+// PENYEDIA (VENDOR)
+// ---------------------------------------------------------------------------
+
+model Vendor {
+  id                 String       @id @default(uuid())
+  nib                String       @unique
+  npwp               String?
+  companyName        String       @map("company_name")
+  companyType        String?      @map("company_type")
+  email              String?
+  phone              String?
+  address            String?
+  directorName       String?      @map("director_name")
+  verificationStatus VendorStatus @default(DRAFT) @map("verification_status")
+  createdAt          DateTime     @default(now()) @map("created_at")
+
+  users          VendorUser[]
+  kbli           VendorKbli[]
+  legalDocuments VendorLegalDocument[]
+  verifications  VendorVerification[]
+  invitations    ProcurementInvitation[]
+  bids           Bid[]
+  contracts      Contract[]
+
+  @@map("vendors")
+}
+
+model VendorUser {
+  id       String @id @default(uuid())
+  vendorId String @map("vendor_id")
+  userId   String @map("user_id")
+
+  vendor Vendor @relation(fields: [vendorId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([vendorId, userId])
+  @@map("vendor_users")
+}
+
+model KbliMaster {
+  id      String  @id @default(uuid())
+  code    String
+  title   String
+  version String
+  active  Boolean @default(true)
+
+  vendorKbli VendorKbli[]
+
+  @@unique([code, version])
+  @@map("kbli_master")
+}
+
+model VendorKbli {
+  id            String  @id @default(uuid())
+  vendorId      String  @map("vendor_id")
+  kbliId        String  @map("kbli_id")
+  licenseStatus String? @map("license_status")
+  active        Boolean @default(true)
+
+  vendor Vendor     @relation(fields: [vendorId], references: [id])
+  kbli   KbliMaster @relation(fields: [kbliId], references: [id])
+
+  @@unique([vendorId, kbliId])
+  @@map("vendor_kbli")
+}
+
+model VendorLegalDocument {
+  id             String         @id @default(uuid())
+  vendorId       String         @map("vendor_id")
+  documentType   String         @map("document_type")
+  documentNumber String?        @map("document_number")
+  issuedAt       DateTime?      @map("issued_at")
+  expiresAt      DateTime?      @map("expires_at")
+  fileUri        String         @map("file_uri")
+  checksum       String?
+  version        Int            @default(1)
+  status         DocumentStatus @default(UPLOADED)
+  uploadedById   String?        @map("uploaded_by")
+  uploadedAt     DateTime       @default(now()) @map("uploaded_at")
+
+  vendor     Vendor @relation(fields: [vendorId], references: [id])
+  uploadedBy User?  @relation("VendorDocUploader", fields: [uploadedById], references: [id])
+
+  @@map("vendor_legal_documents")
+}
+
+model VendorVerification {
+  id           String       @id @default(uuid())
+  vendorId     String       @map("vendor_id")
+  verifierId   String?      @map("verifier_id")
+  decision     VendorStatus
+  notes        String?
+  decidedAt    DateTime     @default(now()) @map("decided_at")
+
+  vendor   Vendor @relation(fields: [vendorId], references: [id])
+  verifier User?  @relation("VendorVerifier", fields: [verifierId], references: [id])
+
+  @@map("vendor_verifications")
+}
+
+// ---------------------------------------------------------------------------
+// RUP
+// ---------------------------------------------------------------------------
+
+model Rup {
+  id                 String    @id @default(uuid())
+  workUnitId         String    @map("work_unit_id")
+  externalRupId      String    @map("external_rup_id")
+  fiscalYear         Int       @map("fiscal_year")
+  packageName        String    @map("package_name")
+  procurementType    String?   @map("procurement_type")
+  procurementMethod  String?   @map("procurement_method")
+  budgetCeiling      Decimal   @default(0) @map("budget_ceiling") @db.Decimal(18, 2)
+  sourceFund         String?   @map("source_fund")
+  location           String?
+  volume             String?
+  schedule           String?
+  source             String    @default("MANUAL_IMPORT") // API_SIRUP | MANUAL_IMPORT
+  syncAt             DateTime? @map("sync_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  workUnit WorkUnit             @relation(fields: [workUnitId], references: [id])
+  packages ProcurementPackage[]
+
+  @@unique([externalRupId, fiscalYear])
+  @@map("rup")
+}
+
+// ---------------------------------------------------------------------------
+// PAKET / WORKFLOW
+// ---------------------------------------------------------------------------
+
+model ProcurementPackage {
+  id               String        @id @default(uuid())
+  rupId            String        @map("rup_id")
+  packageCode      String        @unique @map("package_code")
+  ppkUserId        String        @map("ppk_user_id")
+  packageName      String        @map("package_name")
+  procurementType  String?       @map("procurement_type")
+  status           PackageStatus @default(DRAFT)
+  progressPercent  Decimal       @default(0) @map("progress_percent") @db.Decimal(5, 2)
+  budgetCeiling    Decimal       @default(0) @map("budget_ceiling") @db.Decimal(18, 2)
+  hpsValue         Decimal?      @map("hps_value") @db.Decimal(18, 2)
+  contractValue    Decimal?      @map("contract_value") @db.Decimal(18, 2)
+  kakSummary       String?       @map("kak_summary")
+  specification    String?
+  contractDraft    String?       @map("contract_draft")
+  requirements     String?
+  scheduleNotes    String?       @map("schedule_notes")
+  cancelledReason  String?       @map("cancelled_reason")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+
+  rup           Rup                    @relation(fields: [rupId], references: [id])
+  ppk           User                   @relation("PackagePpk", fields: [ppkUserId], references: [id])
+  kbli          PackageKbli[]
+  stages        PackageStage[]
+  invitations   ProcurementInvitation[]
+  bids          Bid[]
+  contract      Contract?
+  spiRequests   SpiReviewRequest[]
+
+  @@map("procurement_packages")
+}
+
+model PackageKbli {
+  id        String @id @default(uuid())
+  packageId String @map("package_id")
+  kbliCode  String @map("kbli_code")
+
+  package ProcurementPackage @relation(fields: [packageId], references: [id])
+
+  @@map("package_kbli")
+}
+
+model PackageStage {
+  id          String      @id @default(uuid())
+  packageId   String      @map("package_id")
+  stageCode   StageCode   @map("stage_code")
+  stageName   String      @map("stage_name")
+  sequenceNo  Int         @map("sequence_no")
+  weight      Decimal     @default(0) @db.Decimal(5, 2)
+  status      StageStatus @default(NOT_STARTED)
+  picUserId   String?     @map("pic_user_id")
+  startAt     DateTime?   @map("start_at")
+  targetAt    DateTime?   @map("target_at")
+  completedAt DateTime?   @map("completed_at")
+  notes       String?
+
+  package    ProcurementPackage @relation(fields: [packageId], references: [id])
+  pic        User?              @relation("StagePic", fields: [picUserId], references: [id])
+  documents  StageDocument[]
+  approvals  StageApproval[]
+
+  @@unique([packageId, stageCode])
+  @@map("package_stages")
+}
+
+model StageDocument {
+  id           String         @id @default(uuid())
+  stageId      String         @map("stage_id")
+  documentType String         @map("document_type")
+  required     Boolean        @default(false)
+  fileUri      String?        @map("file_uri")
+  checksum     String?
+  version      Int            @default(1)
+  status       DocumentStatus @default(DRAFT)
+  uploadedById String?        @map("uploaded_by")
+  uploadedAt   DateTime?      @map("uploaded_at")
+
+  stage      PackageStage @relation(fields: [stageId], references: [id])
+  uploadedBy User?        @relation("StageDocUploader", fields: [uploadedById], references: [id])
+
+  @@map("stage_documents")
+}
+
+model StageApproval {
+  id             String           @id @default(uuid())
+  stageId        String           @map("stage_id")
+  approverUserId String           @map("approver_user_id")
+  decision       ApprovalDecision
+  notes          String?
+  decidedAt      DateTime         @default(now()) @map("decided_at")
+
+  stage    PackageStage @relation(fields: [stageId], references: [id])
+  approver User         @relation(fields: [approverUserId], references: [id])
+
+  @@map("stage_approvals")
+}
+
+// ---------------------------------------------------------------------------
+// PEMILIHAN
+// ---------------------------------------------------------------------------
+
+model ProcurementInvitation {
+  id          String   @id @default(uuid())
+  packageId   String   @map("package_id")
+  vendorId    String   @map("vendor_id")
+  invitedAt   DateTime @default(now()) @map("invited_at")
+  deadlineAt  DateTime? @map("deadline_at")
+  responded   Boolean  @default(false)
+
+  package ProcurementPackage @relation(fields: [packageId], references: [id])
+  vendor  Vendor             @relation(fields: [vendorId], references: [id])
+
+  @@unique([packageId, vendorId])
+  @@map("procurement_invitations")
+}
+
+model Bid {
+  id            String    @id @default(uuid())
+  packageId     String    @map("package_id")
+  vendorId      String    @map("vendor_id")
+  offeredValue  Decimal?  @map("offered_value") @db.Decimal(18, 2)
+  status        BidStatus @default(DRAFT)
+  adminNotes    String?   @map("admin_notes")
+  technicalNotes String?  @map("technical_notes")
+  technicalScore Decimal? @map("technical_score") @db.Decimal(5, 2)
+  submittedAt   DateTime? @map("submitted_at")
+
+  package ProcurementPackage @relation(fields: [packageId], references: [id])
+  vendor  Vendor             @relation(fields: [vendorId], references: [id])
+  evaluations Evaluation[]
+
+  @@unique([packageId, vendorId])
+  @@map("bids")
+}
+
+model Evaluation {
+  id        String   @id @default(uuid())
+  bidId     String   @map("bid_id")
+  stage     String   // ADMINISTRASI | TEKNIS | HARGA
+  result    String   // LULUS | TIDAK_LULUS
+  notes     String?
+  evaluatedAt DateTime @default(now()) @map("evaluated_at")
+
+  bid Bid @relation(fields: [bidId], references: [id])
+
+  @@map("evaluations")
+}
+
+// ---------------------------------------------------------------------------
+// KONTRAK
+// ---------------------------------------------------------------------------
+
+model Contract {
+  id             String         @id @default(uuid())
+  packageId      String         @unique @map("package_id")
+  vendorId       String         @map("vendor_id")
+  contractNumber String         @unique @map("contract_number")
+  contractValue  Decimal        @map("contract_value") @db.Decimal(18, 2)
+  startDate      DateTime       @map("start_date")
+  endDate        DateTime       @map("end_date")
+  status         ContractStatus @default(DRAFT)
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  package    ProcurementPackage  @relation(fields: [packageId], references: [id])
+  vendor     Vendor              @relation(fields: [vendorId], references: [id])
+  milestones ContractMilestone[]
+  addenda    ContractAddendum[]
+
+  @@map("contracts")
+}
+
+model ContractMilestone {
+  id          String    @id @default(uuid())
+  contractId  String    @map("contract_id")
+  name        String
+  targetDate  DateTime  @map("target_date")
+  completedAt DateTime? @map("completed_at")
+  progressPercent Decimal @default(0) @map("progress_percent") @db.Decimal(5, 2)
+  notes       String?
+
+  contract Contract @relation(fields: [contractId], references: [id])
+
+  @@map("contract_milestones")
+}
+
+model ContractAddendum {
+  id          String   @id @default(uuid())
+  contractId  String   @map("contract_id")
+  reason      String
+  changes     String
+  newValue    Decimal? @map("new_value") @db.Decimal(18, 2)
+  newEndDate  DateTime? @map("new_end_date")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  contract Contract @relation(fields: [contractId], references: [id])
+
+  @@map("contract_addenda")
+}
+
+// ---------------------------------------------------------------------------
+// SPI
+// ---------------------------------------------------------------------------
+
+model SpiReviewRequest {
+  id           String         @id @default(uuid())
+  packageId    String         @map("package_id")
+  requestedBy  String         @map("requested_by")
+  requestType  SpiRequestType @map("request_type")
+  reason       String?
+  scope        String?
+  requestedAt  DateTime       @default(now()) @map("requested_at")
+
+  package   ProcurementPackage @relation(fields: [packageId], references: [id])
+  requester User               @relation("SpiRequester", fields: [requestedBy], references: [id])
+  review    SpiReview?
+
+  @@map("spi_review_requests")
+}
+
+model SpiReview {
+  id              String          @id @default(uuid())
+  reviewRequestId String          @unique @map("review_request_id")
+  reviewerUserId  String          @map("reviewer_user_id")
+  reviewStatus    SpiReviewStatus @default(NOT_REVIEWED) @map("review_status")
+  riskLevel       RiskLevel?      @map("risk_level")
+  riskScore       Int?            @map("risk_score")
+  riskReasons     String?         @map("risk_reasons")
+  startedAt       DateTime?       @map("started_at")
+  closedAt        DateTime?       @map("closed_at")
+
+  request  SpiReviewRequest @relation(fields: [reviewRequestId], references: [id])
+  reviewer User             @relation("SpiReviewer", fields: [reviewerUserId], references: [id])
+  findings SpiFinding[]
+
+  @@map("spi_reviews")
+}
+
+model SpiFinding {
+  id          String        @id @default(uuid())
+  spiReviewId String        @map("spi_review_id")
+  picUserId   String?       @map("pic_user_id")
+  category    String?
+  description String
+  dueDate     DateTime?     @map("due_date")
+  status      FindingStatus @default(FOLLOW_UP_REQUIRED)
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  review    SpiReview     @relation(fields: [spiReviewId], references: [id])
+  pic       User?         @relation("FindingPic", fields: [picUserId], references: [id])
+  followups SpiFollowup[]
+
+  @@map("spi_findings")
+}
+
+model SpiFollowup {
+  id                 String               @id @default(uuid())
+  findingId          String               @map("finding_id")
+  submittedById      String               @map("submitted_by")
+  response           String
+  evidenceUri        String?              @map("evidence_uri")
+  submittedAt        DateTime             @default(now()) @map("submitted_at")
+  verificationStatus FollowupVerification @default(WAITING_VERIFICATION) @map("verification_status")
+  verifiedById       String?              @map("verified_by")
+  verifiedAt         DateTime?            @map("verified_at")
+  verificationNotes  String?              @map("verification_notes")
+
+  finding     SpiFinding @relation(fields: [findingId], references: [id])
+  submittedBy User       @relation("FollowupSubmitter", fields: [submittedById], references: [id])
+  verifiedBy  User?      @relation("FollowupVerifier", fields: [verifiedById], references: [id])
+
+  @@map("spi_followups")
+}
+
+// ---------------------------------------------------------------------------
+// PLATFORM: AUDIT, NOTIFIKASI, INTEGRASI
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  userId     String?  @map("user_id")
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  action     String
+  oldData    Json?    @map("old_data")
+  newData    Json?    @map("new_data")
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId, createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id        String            @id @default(uuid())
+  userId    String            @map("user_id")
+  type      NotificationType
+  title     String
+  message   String
+  link      String?
+  readAt    DateTime?         @map("read_at")
+  createdAt DateTime          @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+model IntegrationLog {
+  id          String   @id @default(uuid())
+  service     String   // SIRUP | OSS
+  direction   String   // PULL | PUSH | IMPORT
+  status      String   // SUCCESS | FAILED
+  payload     Json?
+  message     String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("integration_logs")
+}
