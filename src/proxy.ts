@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
 const COOKIE_NAME = "polban_session";
-const PUBLIC_PATHS = ["/login", "/register", "/forbidden"];
+const PUBLIC_PATHS = ["/login", "/register", "/forbidden", "/verify"];
 
 function getSecretKey() {
   const secret = process.env.SESSION_SECRET ?? "";

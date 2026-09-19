@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { Card, CardHeader, Badge, ProgressBar, Table, Th, Td } from "@/components/ui";
 import { StatusBadge, TimingBadge } from "@/components/status-badge";
 import { formatRupiah, formatDate, formatDateTime } from "@/lib/format";
-import { STAGE_BLUEPRINT } from "@/lib/constants";
+import { STAGE_BLUEPRINT, GENERATABLE_DOCUMENT_TYPES, DOCUMENT_REQUIRED_SIGNERS, DOCUMENT_TYPE_LABELS } from "@/lib/constants";
 import { computeTiming, canCompleteStage } from "@/lib/workflow";
 import { canActOnStage } from "@/lib/stage-access";
 import { cn } from "@/lib/utils";
@@ -27,6 +27,7 @@ import {
   CancelForm,
 } from "./forms";
 import { approveStageDocumentAction } from "@/actions/package";
+import { generateStageDocumentAction } from "@/actions/documents";
 
 const TABS = [
   { key: "ringkasan", label: "Ringkasan" },
@@ -57,7 +58,7 @@ export default async function PackageDetailPage({
       stages: {
         orderBy: { sequenceNo: "asc" },
         include: {
-          documents: { orderBy: { uploadedAt: "desc" } },
+          documents: { orderBy: { uploadedAt: "desc" }, include: { signatures: true } },
           approvals: { orderBy: { decidedAt: "desc" }, include: { approver: true } },
           pic: true,
         },
@@ -74,6 +75,9 @@ export default async function PackageDetailPage({
   if (!pkg) notFound();
 
   const isOwnerPpk = session.role === "PPK" && pkg.ppkUserId === session.userId;
+  const canGenerateDocs =
+    ["STAF_PPK", "ADMIN"].includes(session.role) || (session.role === "PPK" && isOwnerPpk);
+  const winningBid = pkg.bids.find((b) => b.status === "WINNER");
   const canViewAuditFull = ["ADMIN", "SPI"].includes(session.role);
 
   const auditLogs = canViewAuditFull
@@ -264,35 +268,77 @@ export default async function PackageDetailPage({
                           <Th>Berkas</Th>
                           <Th>Versi</Th>
                           <Th>Status</Th>
+                          <Th>Tanda Tangan</Th>
                           <Th></Th>
                         </tr>
                       </thead>
                       <tbody>
-                        {stage.documents.map((doc) => (
-                          <tr key={doc.id}>
-                            <Td>{doc.documentType}</Td>
-                            <Td>{doc.required ? "Ya" : "-"}</Td>
-                            <Td className="max-w-[160px] truncate text-xs text-blue-700">
-                              {doc.fileUri ?? "-"}
-                            </Td>
-                            <Td>{doc.version}</Td>
-                            <Td>
-                              <StatusBadge kind="document" status={doc.status} />
-                            </Td>
-                            <Td>
-                              {canAct && doc.status === "UPLOADED" ? (
-                                <form action={approveStageDocumentAction.bind(null, doc.id)}>
-                                  <button className="text-xs font-medium text-blue-700 hover:underline" type="submit">
-                                    Setujui
-                                  </button>
-                                </form>
-                              ) : null}
-                            </Td>
-                          </tr>
-                        ))}
+                        {stage.documents.map((doc) => {
+                          const requiredSigners = DOCUMENT_REQUIRED_SIGNERS[doc.documentType] ?? [];
+                          const signedRoles = new Set(doc.signatures.map((s) => s.signerRole));
+                          return (
+                            <tr key={doc.id}>
+                              <Td>{DOCUMENT_TYPE_LABELS[doc.documentType] ?? doc.documentType}</Td>
+                              <Td>{doc.required ? "Ya" : "-"}</Td>
+                              <Td className="max-w-[160px] truncate text-xs text-blue-700">
+                                {doc.isGenerated ? "Digenerate sistem" : (doc.fileUri ?? "-")}
+                              </Td>
+                              <Td>{doc.version}</Td>
+                              <Td>
+                                <StatusBadge kind="document" status={doc.status} />
+                              </Td>
+                              <Td className="text-xs">
+                                {requiredSigners.length === 0
+                                  ? "-"
+                                  : requiredSigners
+                                      .map((r) => `${r === "PPK" ? "PPK" : "Penyedia"}: ${signedRoles.has(r) ? "✓" : "belum"}`)
+                                      .join(" · ")}
+                              </Td>
+                              <Td className="space-x-2">
+                                {doc.isGenerated ? (
+                                  <Link href={`/documents/${doc.id}`} className="text-xs font-medium text-blue-700 hover:underline">
+                                    Lihat/TTD
+                                  </Link>
+                                ) : null}
+                                {canAct && doc.status === "UPLOADED" ? (
+                                  <form action={approveStageDocumentAction.bind(null, doc.id)} className="inline">
+                                    <button className="text-xs font-medium text-blue-700 hover:underline" type="submit">
+                                      Setujui
+                                    </button>
+                                  </form>
+                                ) : null}
+                              </Td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </Table>
                   )}
+
+                  {canGenerateDocs
+                    ? blueprint?.requiredDocuments
+                        .filter(
+                          (req) =>
+                            (GENERATABLE_DOCUMENT_TYPES as readonly string[]).includes(req.type) &&
+                            !stage.documents.some((d) => d.documentType === req.type && d.isGenerated)
+                        )
+                        .map((req) => (
+                          <form
+                            key={req.type}
+                            action={async () => {
+                              "use server";
+                              await generateStageDocumentAction(stage.id, req.type);
+                            }}
+                          >
+                            <button
+                              type="submit"
+                              className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                            >
+                              Generate {DOCUMENT_TYPE_LABELS[req.type] ?? req.label}
+                            </button>
+                          </form>
+                        ))
+                    : null}
 
                   {canAct && stage.status !== "COMPLETED" && stage.status !== "CANCELLED" ? (
                     <div className="space-y-3 border-t border-slate-100 pt-3">
@@ -388,6 +434,38 @@ export default async function PackageDetailPage({
               ) : (
                 <BidForm packageId={pkg.id} />
               )}
+            </Card>
+          ) : null}
+
+          {session.role === "PENYEDIA" && winningBid && winningBid.vendorId === session.vendorId ? (
+            <Card className="p-5">
+              <h3 className="mb-2 text-sm font-semibold text-slate-900">Dokumen Perlu Tanda Tangan Anda</h3>
+              {(() => {
+                const docsNeedingSignature = pkg.stages.flatMap((s) =>
+                  s.documents.filter(
+                    (d) =>
+                      d.isGenerated &&
+                      (DOCUMENT_REQUIRED_SIGNERS[d.documentType] ?? []).includes("PENYEDIA") &&
+                      !d.signatures.some((sig) => sig.signerRole === "PENYEDIA")
+                  )
+                );
+                return docsNeedingSignature.length === 0 ? (
+                  <p className="text-xs text-slate-400">Tidak ada dokumen yang menunggu tanda tangan Anda saat ini.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {docsNeedingSignature.map((d) => (
+                      <Link
+                        key={d.id}
+                        href={`/documents/${d.id}`}
+                        className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 hover:bg-amber-100"
+                      >
+                        <span>{DOCUMENT_TYPE_LABELS[d.documentType] ?? d.documentType}</span>
+                        <span className="text-xs font-medium">Tanda Tangani →</span>
+                      </Link>
+                    ))}
+                  </div>
+                );
+              })()}
             </Card>
           ) : null}
         </div>

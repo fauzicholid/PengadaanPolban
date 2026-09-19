@@ -236,6 +236,31 @@ export const STAGE_BLUEPRINT: StageBlueprint[] = [
   },
 ];
 
+// Jenis dokumen "Berita Acara"/administratif yang dapat digenerate otomatis
+// oleh sistem (diisi Staf PPK), lalu divalidasi lewat tanda tangan digital
+// (nama, waktu, kode verifikasi + QR) alih-alih proses cetak-tanda tangan-pindai manual.
+export const GENERATABLE_DOCUMENT_TYPES = ["BA_REVIU", "BA_EVALUASI", "BA_HASIL", "BAST"] as const;
+export type GeneratableDocumentType = (typeof GENERATABLE_DOCUMENT_TYPES)[number];
+
+export const DOCUMENT_TYPE_LABELS: Record<string, string> = {
+  KAK_SPESIFIKASI: "KAK/Spesifikasi",
+  HPS: "HPS",
+  BA_REVIU: "Berita Acara Reviu",
+  DOKUMEN_PEMILIHAN: "Undangan/Dokumen Pemilihan",
+  BA_EVALUASI: "Berita Acara Evaluasi",
+  BA_HASIL: "Berita Acara Hasil Pemilihan",
+  SPK_KONTRAK: "SPK/Kontrak",
+  BAST: "Berita Acara Serah Terima",
+};
+
+// Peran yang tanda tangannya wajib ada agar dokumen generate berstatus final.
+export const DOCUMENT_REQUIRED_SIGNERS: Record<string, ("PPK" | "PENYEDIA")[]> = {
+  BA_REVIU: ["PPK"],
+  BA_EVALUASI: ["PPK"],
+  BA_HASIL: ["PPK", "PENYEDIA"],
+  BAST: ["PPK", "PENYEDIA"],
+};
+
 export const STAGE_TO_PACKAGE_STATUS: Record<StageCode, PackageStatus> = {
   RUP: "RUP",
   PERSIAPAN: "PERSIAPAN",

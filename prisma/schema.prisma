@@ -224,6 +224,7 @@ model User {
   spiFollowupsVerified  SpiFollowup[]            @relation("FollowupVerifier")
   auditLogs            AuditLog[]
   notifications        Notification[]
+  documentSignatures   DocumentSignature[] @relation("DocumentSigner")
 
   @@map("users")
 }
@@ -301,6 +302,7 @@ model Vendor {
   invitations    ProcurementInvitation[]
   bids           Bid[]
   contracts      Contract[]
+  documentSignatures DocumentSignature[]
 
   @@map("vendors")
 }
@@ -485,13 +487,34 @@ model StageDocument {
   checksum     String?
   version      Int            @default(1)
   status       DocumentStatus @default(DRAFT)
+  isGenerated  Boolean        @default(false) @map("is_generated")
+  contentHtml  String?        @map("content_html")
   uploadedById String?        @map("uploaded_by")
   uploadedAt   DateTime?      @map("uploaded_at")
 
-  stage      PackageStage @relation(fields: [stageId], references: [id])
-  uploadedBy User?        @relation("StageDocUploader", fields: [uploadedById], references: [id])
+  stage      PackageStage        @relation(fields: [stageId], references: [id])
+  uploadedBy User?               @relation("StageDocUploader", fields: [uploadedById], references: [id])
+  signatures DocumentSignature[]
 
   @@map("stage_documents")
+}
+
+model DocumentSignature {
+  id               String   @id @default(uuid())
+  documentId       String   @map("document_id")
+  signerRole       String   @map("signer_role") // PPK | PENYEDIA
+  signerUserId     String?  @map("signer_user_id")
+  signerVendorId   String?  @map("signer_vendor_id")
+  signerName       String   @map("signer_name")
+  signedAt         DateTime @default(now()) @map("signed_at")
+  verificationCode String   @unique @map("verification_code")
+  signatureHash    String   @map("signature_hash")
+
+  document     StageDocument @relation(fields: [documentId], references: [id])
+  signerUser   User?         @relation("DocumentSigner", fields: [signerUserId], references: [id])
+  signerVendor Vendor?       @relation(fields: [signerVendorId], references: [id])
+
+  @@map("document_signatures")
 }
 
 model StageApproval {
