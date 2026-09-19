@@ -2,15 +2,92 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
 import { notify, notifyMany } from "@/lib/notify";
 import { setSessionCookie } from "@/lib/session";
+import { sendEmail, vendorVerificationEmail } from "@/lib/email";
 
 export interface FormState {
   error?: string;
   success?: string;
+}
+
+export async function publicRegisterVendorAction(
+  _prev: FormState,
+  formData: FormData
+): Promise<FormState> {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+  const confirmPassword = String(formData.get("confirmPassword") ?? "");
+  const fullName = String(formData.get("fullName") ?? "").trim();
+  const nib = String(formData.get("nib") ?? "").trim();
+  const companyName = String(formData.get("companyName") ?? "").trim();
+
+  if (!email || !password || !fullName || !nib || !companyName) {
+    return { error: "Email, kata sandi, nama penanggung jawab, NIB, dan nama badan usaha wajib diisi." };
+  }
+  if (password.length < 8) {
+    return { error: "Kata sandi minimal 8 karakter." };
+  }
+  if (password !== confirmPassword) {
+    return { error: "Konfirmasi kata sandi tidak sesuai." };
+  }
+
+  const dupeUser = await prisma.user.findUnique({ where: { email } });
+  if (dupeUser) return { error: "Email sudah terdaftar. Silakan masuk." };
+
+  const dupeVendor = await prisma.vendor.findUnique({ where: { nib } });
+  if (dupeVendor) return { error: "NIB sudah terdaftar pada sistem." };
+
+  const passwordHash = await bcrypt.hash(password, 10);
+
+  const vendor = await prisma.vendor.create({
+    data: {
+      nib,
+      companyName,
+      npwp: String(formData.get("npwp") ?? "") || null,
+      companyType: String(formData.get("companyType") ?? "") || null,
+      email: String(formData.get("companyEmail") ?? "") || email,
+      phone: String(formData.get("phone") ?? "") || null,
+      address: String(formData.get("address") ?? "") || null,
+      directorName: String(formData.get("directorName") ?? "") || null,
+      verificationStatus: "DRAFT",
+      users: {
+        create: {
+          user: {
+            create: { email, fullName, passwordHash, status: "ACTIVE" },
+          },
+        },
+      },
+    },
+    include: { users: { include: { user: true } } },
+  });
+
+  const newUser = vendor.users[0].user;
+
+  await setSessionCookie({
+    userId: newUser.id,
+    email: newUser.email,
+    fullName: newUser.fullName,
+    role: "PENYEDIA",
+    workUnitId: null,
+    workUnitName: null,
+    vendorId: vendor.id,
+  });
+
+  await writeAudit({
+    userId: newUser.id,
+    entityType: "vendor",
+    entityId: vendor.id,
+    action: "PUBLIC_REGISTER",
+    newData: { nib, companyName, email },
+  });
+
+  revalidatePath("/vendor/profile");
+  redirect("/vendor/profile");
 }
 
 export async function registerVendorAction(
@@ -198,12 +275,12 @@ export async function submitVendorForVerificationAction(
     data: { verificationStatus: "SUBMITTED" },
   });
 
-  const admins = await prisma.user.findMany({
-    where: { appointments: { some: { role: { code: "ADMIN" }, active: true } } },
+  const verifiers = await prisma.user.findMany({
+    where: { appointments: { some: { role: { code: { in: ["ADMIN", "STAF_PPK"] } }, active: true } } },
     select: { id: true },
   });
   await notifyMany(
-    admins.map((a) => a.id),
+    verifiers.map((a) => a.id),
     {
       type: "VENDOR_VERIFICATION",
       title: "Permintaan Verifikasi Penyedia",
@@ -229,7 +306,7 @@ export async function decideVendorVerificationAction(
   _prev: FormState,
   formData: FormData
 ): Promise<FormState> {
-  const session = await requireRole(["ADMIN"]);
+  const session = await requireRole(["ADMIN", "STAF_PPK"]);
   const vendorId = String(formData.get("vendorId") ?? "");
   const decision = String(formData.get("decision") ?? "") as
     | "VERIFIED"
@@ -252,7 +329,7 @@ export async function decideVendorVerificationAction(
         create: { verifierId: session.userId, decision, notes: notes || null },
       },
     },
-    include: { users: true },
+    include: { users: { include: { user: true } } },
   });
 
   await notifyMany(
@@ -265,6 +342,17 @@ export async function decideVendorVerificationAction(
     }
   );
 
+  const { subject, html } = vendorVerificationEmail({
+    companyName: vendor.companyName,
+    decision,
+    notes,
+    verifierName: session.fullName,
+  });
+  const recipients = new Set<string>();
+  if (vendor.email) recipients.add(vendor.email);
+  for (const u of vendor.users) recipients.add(u.user.email);
+  await Promise.all([...recipients].map((to) => sendEmail({ to, subject, html })));
+
   await writeAudit({
     userId: session.userId,
     entityType: "vendor",
@@ -275,5 +363,5 @@ export async function decideVendorVerificationAction(
 
   revalidatePath(`/vendors/${vendorId}`);
   revalidatePath("/vendors");
-  return { success: "Keputusan verifikasi tersimpan." };
+  return { success: "Keputusan verifikasi tersimpan dan email notifikasi telah dikirim." };
 }

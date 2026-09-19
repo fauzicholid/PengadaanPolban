@@ -113,9 +113,12 @@ export default async function VendorDetailPage({
         )}
       </Card>
 
-      {session.role === "ADMIN" ? (
+      {session.role === "ADMIN" || session.role === "STAF_PPK" ? (
         <Card className="p-5">
           <h3 className="mb-3 text-sm font-semibold text-slate-900">Keputusan Verifikasi</h3>
+          <p className="mb-3 text-xs text-slate-500">
+            Keputusan akan dikirimkan ke penyedia melalui notifikasi dalam aplikasi dan email.
+          </p>
           <VerifyForm vendorId={vendor.id} />
         </Card>
       ) : null}

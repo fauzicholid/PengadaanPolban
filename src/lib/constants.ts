@@ -290,7 +290,7 @@ export const MENU_STRUCTURE: {
   {
     section: "Penyedia",
     items: [
-      { label: "Direktori & Verifikasi", href: "/vendors", roles: ["ADMIN", "PPK", "PEJABAT_PENGADAAN", "KPA", "SPI"] },
+      { label: "Direktori & Verifikasi", href: "/vendors", roles: ["ADMIN", "STAF_PPK", "PPK", "PEJABAT_PENGADAAN", "KPA", "SPI"] },
       { label: "Profil Perusahaan", href: "/vendor/profile", roles: ["PENYEDIA"] },
       { label: "Undangan", href: "/vendor/invitations", roles: ["PENYEDIA"] },
       { label: "Penawaran", href: "/vendor/bids", roles: ["PENYEDIA"] },

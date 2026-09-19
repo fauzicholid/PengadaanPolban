@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { LoginForm } from "./login-form";
 import { APP_NAME, ROLE_LABELS } from "@/lib/constants";
 
@@ -35,6 +36,12 @@ export default function LoginPage() {
         <div className="rounded-2xl bg-white p-6 shadow-xl">
           <h2 className="mb-4 text-lg font-semibold text-slate-900">Masuk</h2>
           <LoginForm />
+          <p className="mt-4 text-center text-sm text-slate-500">
+            Penyedia baru?{" "}
+            <Link href="/register" className="font-medium text-blue-700 hover:underline">
+              Daftar di sini
+            </Link>
+          </p>
         </div>
         <div className="rounded-2xl bg-white/5 p-4 text-xs text-blue-100/70 ring-1 ring-white/10">
           <p className="mb-2 font-semibold text-blue-100">Akun Demo (kata sandi: <code>polban123</code>)</p>
