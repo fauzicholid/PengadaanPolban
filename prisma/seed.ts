@@ -27,6 +27,12 @@ function daysFromNow(days: number) {
 }
 
 async function main() {
+  const alreadySeeded = await prisma.procurementPackage.count();
+  if (alreadySeeded > 0) {
+    console.log("Data demo sudah ada, lewati seeding (idempotent).");
+    return;
+  }
+
   console.log("Seeding database...");
 
   // --- Organisasi & Unit Kerja ---
