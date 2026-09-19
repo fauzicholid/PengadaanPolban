@@ -36,11 +36,27 @@ export async function loginAction(
   });
 
   if (!user || user.status !== "ACTIVE") {
+    if (user) {
+      await writeAudit({
+        userId: user.id,
+        entityType: "user",
+        entityId: user.id,
+        action: "LOGIN_FAILED",
+        newData: { email, reason: "inactive_or_not_found" },
+      });
+    }
     return { error: "Email atau kata sandi salah, atau akun tidak aktif." };
   }
 
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) {
+    await writeAudit({
+      userId: user.id,
+      entityType: "user",
+      entityId: user.id,
+      action: "LOGIN_FAILED",
+      newData: { email, reason: "wrong_password" },
+    });
     return { error: "Email atau kata sandi salah." };
   }
 
