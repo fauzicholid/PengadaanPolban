@@ -180,10 +180,13 @@ export const STAGE_BLUEPRINT: StageBlueprint[] = [
   },
   {
     code: "REVIU",
-    name: "Reviu KPA",
+    name: "Reviu",
     sequenceNo: 3,
     weight: 10,
     requiredDocuments: [{ type: "BA_REVIU", label: "BA/Daftar Periksa Reviu" }],
+    // requiresApproval bersifat statis untuk tahap lain; khusus REVIU nilainya
+    // ditimpa secara dinamis berbasis nilai paket (lihat isHighValuePackage) —
+    // true di sini hanya sebagai default bila override tidak diberikan.
     requiresApproval: true,
   },
   {
@@ -254,11 +257,15 @@ export const DOCUMENT_TYPE_LABELS: Record<string, string> = {
 };
 
 // Peran yang tanda tangannya wajib ada agar dokumen generate berstatus final.
-export const DOCUMENT_REQUIRED_SIGNERS: Record<string, ("PPK" | "PENYEDIA")[]> = {
+// Urutan dalam array mencerminkan urutan tanda tangan yang disyaratkan
+// (mis. BAST: PPK menandatangani lebih dulu bersama penyedia, baru kemudian
+// diserahterimakan ke KPA selaku Pengguna Anggaran untuk ditandatangani).
+export type DocumentSignerRole = "PPK" | "PENYEDIA" | "KPA";
+export const DOCUMENT_REQUIRED_SIGNERS: Record<string, DocumentSignerRole[]> = {
   BA_REVIU: ["PPK"],
   BA_EVALUASI: ["PPK"],
   BA_HASIL: ["PPK", "PENYEDIA"],
-  BAST: ["PPK", "PENYEDIA"],
+  BAST: ["PPK", "PENYEDIA", "KPA"],
 };
 
 export const STAGE_TO_PACKAGE_STATUS: Record<StageCode, PackageStatus> = {

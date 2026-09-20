@@ -8,8 +8,9 @@ import { writeAudit } from "@/lib/audit";
 import { notify, notifyMany } from "@/lib/notify";
 import { STAGE_BLUEPRINT, STAGE_TO_PACKAGE_STATUS } from "@/lib/constants";
 import { canCompleteStage, computeProgress } from "@/lib/workflow";
-import { canActOnStage } from "@/lib/stage-access";
-import type { RoleCode, StageCode } from "@/generated/prisma/enums";
+import { canActOnStage, STAGE_ACTOR_ROLES } from "@/lib/stage-access";
+import { isHighValuePackage } from "@/lib/risk";
+import type { StageCode } from "@/generated/prisma/enums";
 
 export interface FormState {
   error?: string;
@@ -263,7 +264,9 @@ export async function completeStageAction(
   }
   if (stage.status === "COMPLETED") return { error: "Tahap sudah selesai." };
 
-  const gate = canCompleteStage(stage.stageCode, stage.documents, stage.approvals);
+  const gate = canCompleteStage(stage.stageCode, stage.documents, stage.approvals, {
+    requiresApprovalOverride: stage.stageCode === "REVIU" ? isHighValuePackage(stage.package) : undefined,
+  });
   if (!gate.ok) {
     return {
       error: `Dokumen/persetujuan wajib belum lengkap: ${gate.missing.join(", ")}.`,
@@ -292,7 +295,7 @@ export async function completeStageAction(
     const nextActors = await prisma.user.findMany({
       where: {
         appointments: {
-          some: { active: true, role: { code: { in: canActOnStageRoles(nextStageCode) } } },
+          some: { active: true, role: { code: { in: STAGE_ACTOR_ROLES[nextStageCode] } } },
         },
       },
       select: { id: true },
@@ -320,21 +323,6 @@ export async function completeStageAction(
   return { success: "Tahap berhasil diselesaikan." };
 }
 
-function canActOnStageRoles(stageCode: StageCode): RoleCode[] {
-  const map: Record<StageCode, RoleCode[]> = {
-    RUP: [],
-    PERSIAPAN: ["PPK", "STAF_PPK"],
-    REVIU: ["KPA"],
-    PEMILIHAN: ["PEJABAT_PENGADAAN"],
-    EVALUASI: ["PEJABAT_PENGADAAN"],
-    NEGOSIASI: ["PEJABAT_PENGADAAN"],
-    KONTRAK: ["PPK"],
-    PELAKSANAAN: ["PPK", "STAF_PPK"],
-    BAST: ["PPK"],
-  };
-  return map[stageCode];
-}
-
 export async function submitStageForApprovalAction(
   _prev: FormState,
   formData: FormData
@@ -356,16 +344,16 @@ export async function submitStageForApprovalAction(
     data: { status: "WAITING_APPROVAL" },
   });
 
-  const kpaUsers = await prisma.user.findMany({
-    where: { appointments: { some: { active: true, role: { code: "KPA" } } } },
+  const spiUsers = await prisma.user.findMany({
+    where: { appointments: { some: { active: true, role: { code: "SPI" } } } },
     select: { id: true },
   });
   await notifyMany(
-    kpaUsers.map((u) => u.id),
+    spiUsers.map((u) => u.id),
     {
       type: "REVIEW_REQUEST",
-      title: "Permintaan Reviu KPA",
-      message: `Paket ${stage.package.packageCode} menunggu reviu/persetujuan Anda.`,
+      title: "Permintaan Reviu SPI",
+      message: `Paket ${stage.package.packageCode} menunggu reviu berbasis risiko dari SPI.`,
       link: `/packages/${stage.packageId}`,
     }
   );
@@ -378,14 +366,14 @@ export async function submitStageForApprovalAction(
   });
 
   revalidatePath(`/packages/${stage.packageId}`);
-  return { success: "Paket diajukan untuk reviu KPA." };
+  return { success: "Paket diajukan untuk reviu SPI." };
 }
 
 export async function decideStageApprovalAction(
   _prev: FormState,
   formData: FormData
 ): Promise<FormState> {
-  const session = await requireRole(["KPA"]);
+  const session = await requireRole(["SPI"]);
   const stageId = String(formData.get("stageId") ?? "");
   const decision = String(formData.get("decision") ?? "") as "APPROVED" | "REVISION" | "REJECTED";
   const notes = String(formData.get("notes") ?? "");
@@ -438,8 +426,8 @@ export async function decideStageApprovalAction(
   await notify({
     userId: stage.package.ppkUserId,
     type: decision === "APPROVED" ? "PACKAGE_APPROVED" : "PACKAGE_RETURNED",
-    title: `Reviu KPA: ${decision}`,
-    message: `Paket ${stage.package.packageCode} — keputusan reviu: ${decision}.`,
+    title: `Reviu SPI: ${decision}`,
+    message: `Paket ${stage.package.packageCode} — keputusan reviu SPI: ${decision}.`,
     link: `/packages/${stage.packageId}`,
   });
 

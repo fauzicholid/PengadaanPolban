@@ -1,7 +1,11 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { getDocumentWithAccess } from "@/lib/document-access";
-import { signStageDocumentAction, signStageDocumentAsVendorAction } from "@/actions/documents";
+import {
+  signStageDocumentAction,
+  signStageDocumentAsVendorAction,
+  signStageDocumentAsKpaAction,
+} from "@/actions/documents";
 import { qrDataUrl, verifyUrl } from "@/lib/qr";
 import { DOCUMENT_TYPE_LABELS, DOCUMENT_REQUIRED_SIGNERS, ROLE_LABELS } from "@/lib/constants";
 import { formatDateTime } from "@/lib/format";
@@ -41,6 +45,12 @@ export default async function DocumentViewerPage({
     !!winningBid &&
     winningBid.vendorId === session.vendorId;
 
+  const canSignAsKpa =
+    requiredRoles.includes("KPA") &&
+    !signedByRole.has("KPA") &&
+    signedByRole.has("PPK") &&
+    (session.role === "KPA" || session.role === "ADMIN");
+
   const signatureBlocks = await Promise.all(
     requiredRoles.map(async (role) => {
       const sig = signedByRole.get(role);
@@ -78,7 +88,7 @@ export default async function DocumentViewerPage({
       <div className="doc-paper mx-auto max-w-3xl rounded-xl border border-slate-200 p-10 shadow-sm">
         <div dangerouslySetInnerHTML={{ __html: doc.contentHtml }} />
 
-        <div className="mt-10 grid gap-8 border-t border-slate-200 pt-6 sm:grid-cols-2">
+        <div className="mt-10 grid gap-8 border-t border-slate-200 pt-6 sm:grid-cols-2 lg:grid-cols-3">
           {signatureBlocks.map(({ role, sig, qr }) => (
             <div key={role} className="text-center text-sm">
               <p className="mb-1 text-xs text-slate-500">{ROLE_LABELS[role as keyof typeof ROLE_LABELS] ?? role}</p>
@@ -120,6 +130,24 @@ export default async function DocumentViewerPage({
                         className="no-print rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-800"
                       >
                         Tanda Tangani (Penyedia)
+                      </button>
+                    </form>
+                  ) : null}
+                  {role === "KPA" && !signedByRole.has("PPK") ? (
+                    <span className="text-[10px] text-slate-400">Menunggu tanda tangan PPK terlebih dahulu</span>
+                  ) : null}
+                  {role === "KPA" && canSignAsKpa ? (
+                    <form
+                      action={async () => {
+                        "use server";
+                        await signStageDocumentAsKpaAction(doc.id);
+                      }}
+                    >
+                      <button
+                        type="submit"
+                        className="no-print rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-800"
+                      >
+                        Tanda Tangani (KPA)
                       </button>
                     </form>
                   ) : null}

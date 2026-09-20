@@ -2,7 +2,18 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { computeTiming } from "@/lib/workflow";
 
-const HIGH_VALUE_THRESHOLD = 500_000_000; // ambang nilai pagu/HPS/kontrak (dapat dikonfigurasi)
+export const HIGH_VALUE_THRESHOLD = 500_000_000; // ambang nilai pagu/HPS/kontrak (dapat dikonfigurasi)
+
+// Reviu KPA statis diganti reviu berbasis risiko: hanya paket bernilai tinggi
+// yang wajib melalui reviu SPI sebelum tahap Reviu dapat diselesaikan; paket
+// lain dapat diselesaikan langsung oleh PPK.
+export function isHighValuePackage(pkg: {
+  budgetCeiling: number | string | { toString(): string };
+  hpsValue?: number | string | { toString(): string } | null;
+}): boolean {
+  const value = Math.max(Number(pkg.budgetCeiling), Number(pkg.hpsValue ?? 0));
+  return value >= HIGH_VALUE_THRESHOLD;
+}
 
 export interface RiskQueueItem {
   packageId: string;

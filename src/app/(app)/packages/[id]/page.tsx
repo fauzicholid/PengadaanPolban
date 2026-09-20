@@ -5,9 +5,10 @@ import { prisma } from "@/lib/prisma";
 import { Card, CardHeader, Badge, ProgressBar, Table, Th, Td } from "@/components/ui";
 import { StatusBadge, TimingBadge } from "@/components/status-badge";
 import { formatRupiah, formatDate, formatDateTime } from "@/lib/format";
-import { STAGE_BLUEPRINT, GENERATABLE_DOCUMENT_TYPES, DOCUMENT_REQUIRED_SIGNERS, DOCUMENT_TYPE_LABELS } from "@/lib/constants";
+import { STAGE_BLUEPRINT, GENERATABLE_DOCUMENT_TYPES, DOCUMENT_REQUIRED_SIGNERS, DOCUMENT_TYPE_LABELS, ROLE_LABELS } from "@/lib/constants";
 import { computeTiming, canCompleteStage } from "@/lib/workflow";
 import { canActOnStage } from "@/lib/stage-access";
+import { isHighValuePackage } from "@/lib/risk";
 import { cn } from "@/lib/utils";
 import {
   DraftForm,
@@ -240,7 +241,10 @@ export default async function PackageDetailPage({
           {pkg.stages.map((stage) => {
             const blueprint = STAGE_BLUEPRINT.find((b) => b.code === stage.stageCode);
             const timing = computeTiming(stage.targetAt, stage.status);
-            const gate = canCompleteStage(stage.stageCode, stage.documents, stage.approvals);
+            const reviuRequiresSpi = stage.stageCode === "REVIU" && isHighValuePackage(pkg);
+            const gate = canCompleteStage(stage.stageCode, stage.documents, stage.approvals, {
+              requiresApprovalOverride: stage.stageCode === "REVIU" ? reviuRequiresSpi : undefined,
+            });
             const canAct =
               canActOnStage(session.role, stage.stageCode) &&
               (session.role !== "PPK" || isOwnerPpk);
@@ -291,7 +295,7 @@ export default async function PackageDetailPage({
                                 {requiredSigners.length === 0
                                   ? "-"
                                   : requiredSigners
-                                      .map((r) => `${r === "PPK" ? "PPK" : "Penyedia"}: ${signedRoles.has(r) ? "✓" : "belum"}`)
+                                      .map((r) => `${ROLE_LABELS[r] ?? r}: ${signedRoles.has(r) ? "✓" : "belum"}`)
                                       .join(" · ")}
                               </Td>
                               <Td className="space-x-2">
@@ -345,14 +349,34 @@ export default async function PackageDetailPage({
                         </p>
                       ) : null}
                       {stage.stageCode === "REVIU" ? (
-                        session.role === "PPK" && stage.status !== "WAITING_APPROVAL" ? (
-                          <SubmitApprovalForm stageId={stage.id} />
-                        ) : session.role === "KPA" && stage.status === "WAITING_APPROVAL" ? (
-                          <DecideApprovalForm stageId={stage.id} />
-                        ) : null
+                        reviuRequiresSpi ? (
+                          stage.status !== "WAITING_APPROVAL" ? (
+                            <>
+                              <p className="text-xs text-slate-500">
+                                Nilai paket ini di atas ambang batas — wajib melalui reviu berbasis risiko oleh SPI sebelum tahap ini dapat diselesaikan.
+                              </p>
+                              <SubmitApprovalForm stageId={stage.id} />
+                            </>
+                          ) : (
+                            <p className="text-xs text-slate-500">Menunggu keputusan reviu dari SPI.</p>
+                          )
+                        ) : (
+                          <CompleteStageForm stageId={stage.id} label={`Selesaikan Tahap ${stage.stageName}`} />
+                        )
                       ) : (
                         <CompleteStageForm stageId={stage.id} label={`Selesaikan Tahap ${stage.stageName}`} />
                       )}
+                    </div>
+                  ) : null}
+
+                  {reviuRequiresSpi &&
+                  stage.status === "WAITING_APPROVAL" &&
+                  (session.role === "SPI" || session.role === "ADMIN") ? (
+                    <div className="space-y-3 border-t border-slate-100 pt-3">
+                      <p className="text-xs text-slate-500">
+                        Paket bernilai tinggi — reviu berbasis risiko diperlukan sebelum tahap ini dapat diselesaikan.
+                      </p>
+                      <DecideApprovalForm stageId={stage.id} />
                     </div>
                   ) : null}
 

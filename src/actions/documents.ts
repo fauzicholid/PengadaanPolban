@@ -243,3 +243,57 @@ export async function signStageDocumentAsVendorAction(documentId: string): Promi
   revalidatePath(`/documents/${documentId}`);
   return { success: "Dokumen berhasil ditandatangani." };
 }
+
+// Serah terima PPK -> KPA: KPA hanya dapat menandatangani BAST setelah PPK
+// menandatangani lebih dulu (lihat urutan pada DOCUMENT_REQUIRED_SIGNERS).
+export async function signStageDocumentAsKpaAction(documentId: string): Promise<DocActionState> {
+  const session = await requireRole(["KPA", "ADMIN"]);
+
+  const doc = await prisma.stageDocument.findUnique({
+    where: { id: documentId },
+    include: { stage: { include: { package: true } }, signatures: true },
+  });
+  if (!doc) return { error: "Dokumen tidak ditemukan." };
+  if (!doc.isGenerated) {
+    return { error: "Dokumen ini bukan dokumen hasil generate sistem." };
+  }
+
+  const required = DOCUMENT_REQUIRED_SIGNERS[doc.documentType] ?? [];
+  if (!required.includes("KPA")) {
+    return { error: "Dokumen ini tidak memerlukan tanda tangan KPA." };
+  }
+  if (!doc.signatures.some((s) => s.signerRole === "PPK")) {
+    return { error: "Menunggu tanda tangan PPK terlebih dahulu sebelum diserahterimakan ke KPA." };
+  }
+  if (doc.signatures.some((s) => s.signerRole === "KPA")) {
+    return { error: "Dokumen sudah ditandatangani KPA." };
+  }
+
+  const code = makeVerificationCode();
+  const hash = makeSignatureHash([documentId, "KPA", session.userId, Date.now()]);
+
+  await prisma.documentSignature.create({
+    data: {
+      documentId,
+      signerRole: "KPA",
+      signerUserId: session.userId,
+      signerName: session.fullName,
+      verificationCode: code,
+      signatureHash: hash,
+    },
+  });
+
+  const signedRoles = new Set([...doc.signatures.map((s) => s.signerRole), "KPA"]);
+  await maybeFinalize(documentId, doc.documentType, signedRoles);
+  await writeAudit({
+    userId: session.userId,
+    entityType: "stage_document",
+    entityId: documentId,
+    action: "SIGN",
+    newData: { role: "KPA" },
+  });
+
+  revalidatePath(`/packages/${doc.stage.packageId}`);
+  revalidatePath(`/documents/${documentId}`);
+  return { success: "Dokumen berhasil ditandatangani." };
+}

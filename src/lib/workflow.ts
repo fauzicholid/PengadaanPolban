@@ -45,7 +45,8 @@ interface ApprovalLike {
 export function canCompleteStage(
   stageCode: string,
   documents: StageDocLike[],
-  approvals: ApprovalLike[]
+  approvals: ApprovalLike[],
+  options?: { requiresApprovalOverride?: boolean }
 ): { ok: boolean; missing: string[] } {
   const blueprint = stageBlueprintFor(stageCode);
   const missing: string[] = [];
@@ -60,7 +61,8 @@ export function canCompleteStage(
       if (!satisfied) missing.push(req.label);
     }
 
-    if (blueprint.requiresApproval) {
+    const requiresApproval = options?.requiresApprovalOverride ?? blueprint.requiresApproval;
+    if (requiresApproval) {
       const latest = [...approvals].sort(
         (a, b) => b.decidedAt.getTime() - a.decidedAt.getTime()
       )[0];

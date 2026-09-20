@@ -1,12 +1,23 @@
 import { getDashboardData } from "@/lib/dashboard";
+import { prisma } from "@/lib/prisma";
 import type { SessionPayload } from "@/lib/session";
-import { Card, CardHeader, StatCard, LinkButton, Table, Th, Td, Badge } from "@/components/ui";
+import { Card, CardHeader, StatCard, LinkButton, Table, Th, Td, Badge, EmptyState } from "@/components/ui";
 import { formatRupiah, formatNumber } from "@/lib/format";
 import Link from "next/link";
 
 export async function KpaDashboard({ session }: { session: SessionPayload }) {
-  const data = await getDashboardData(session);
+  const [data, bastDocs] = await Promise.all([
+    getDashboardData(session),
+    prisma.stageDocument.findMany({
+      where: { documentType: "BAST", isGenerated: true },
+      include: { stage: { include: { package: true } }, signatures: true },
+    }),
+  ]);
   const maxPipeline = Math.max(1, ...data.pipeline.map((p) => p.count));
+  const awaitingKpaSignature = bastDocs.filter((d) => {
+    const roles = new Set(d.signatures.map((s) => s.signerRole));
+    return roles.has("PPK") && !roles.has("KPA");
+  });
 
   return (
     <div className="space-y-6">
@@ -37,7 +48,7 @@ export async function KpaDashboard({ session }: { session: SessionPayload }) {
           tone={data.overdueCount > 0 ? "danger" : "default"}
         />
         <StatCard
-          label="Menunggu Reviu"
+          label="Menunggu Reviu SPI"
           value={formatNumber(data.waitingApprovalCount)}
           tone={data.waitingApprovalCount > 0 ? "warning" : "default"}
         />
@@ -94,8 +105,31 @@ export async function KpaDashboard({ session }: { session: SessionPayload }) {
 
       <Card>
         <CardHeader
+          title="Dokumen Serah Terima Menunggu Tanda Tangan Anda"
+          subtitle="BAST yang sudah ditandatangani PPK dan menunggu serah terima ke KPA"
+        />
+        {awaitingKpaSignature.length === 0 ? (
+          <EmptyState title="Tidak ada BAST yang menunggu tanda tangan Anda" />
+        ) : (
+          <div className="divide-y divide-slate-100 text-sm">
+            {awaitingKpaSignature.map((d) => (
+              <Link
+                key={d.id}
+                href={`/documents/${d.id}`}
+                className="flex items-center justify-between px-5 py-2.5 hover:bg-slate-50"
+              >
+                <span>{d.stage.package.packageCode} — {d.stage.package.packageName}</span>
+                <span className="text-xs font-medium text-blue-700">Tanda Tangani →</span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <CardHeader
           title="Daftar Paket Menunggu Reviu"
-          subtitle="Segera lakukan reviu/persetujuan sesuai kewenangan Anda"
+          subtitle="Pemantauan reviu berbasis risiko oleh SPI untuk paket bernilai tinggi"
           action={<LinkButton href="/packages" variant="secondary">Semua Paket</LinkButton>}
         />
         {data.recentPackages.filter((p) => p.status === "REVIU").length === 0 ? (

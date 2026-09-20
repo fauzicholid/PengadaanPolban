@@ -167,7 +167,7 @@ export function SubmitApprovalForm({ stageId }: { stageId: string }) {
     <form action={formAction} className="space-y-1">
       <input type="hidden" name="stageId" value={stageId} />
       <Button type="submit" disabled={pending} className="text-xs">
-        {pending ? "Mengirim..." : "Ajukan Reviu ke KPA"}
+        {pending ? "Mengirim..." : "Ajukan Reviu ke SPI"}
       </Button>
       <ErrorSuccess state={state} />
     </form>

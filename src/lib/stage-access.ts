@@ -4,7 +4,10 @@ import type { RoleCode, StageCode } from "@/generated/prisma/enums";
 export const STAGE_ACTOR_ROLES: Record<StageCode, RoleCode[]> = {
   RUP: [],
   PERSIAPAN: ["PPK", "STAF_PPK"],
-  REVIU: ["PPK", "KPA"],
+  // Reviu berbasis risiko: PPK menyelesaikan langsung untuk paket bernilai
+  // wajar; hanya paket bernilai tinggi yang wajib melalui reviu SPI
+  // (lihat submitStageForApprovalAction/decideStageApprovalAction).
+  REVIU: ["PPK"],
   PEMILIHAN: ["PEJABAT_PENGADAAN"],
   EVALUASI: ["PEJABAT_PENGADAAN"],
   NEGOSIASI: ["PEJABAT_PENGADAAN"],
