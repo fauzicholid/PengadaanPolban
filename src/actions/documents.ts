@@ -18,26 +18,29 @@ export interface DocActionState {
   success?: string;
 }
 
-async function maybeFinalize(documentId: string) {
-  const doc = await prisma.stageDocument.findUnique({
-    where: { id: documentId },
-    include: { signatures: true },
-  });
-  if (!doc) return;
-  const required = DOCUMENT_REQUIRED_SIGNERS[doc.documentType] ?? [];
-  const signedRoles = new Set(doc.signatures.map((s) => s.signerRole));
+// Caller already has the document's prior signatures on hand (it just read
+// them to validate the request) — pass those plus the role just signed
+// instead of re-fetching the document to check completeness.
+async function maybeFinalize(documentId: string, documentType: string, signedRoles: Set<string>) {
+  const required = DOCUMENT_REQUIRED_SIGNERS[documentType] ?? [];
   const complete = required.length > 0 && required.every((r) => signedRoles.has(r));
-  if (complete && doc.status !== "FINAL") {
+  if (complete) {
     await prisma.stageDocument.update({ where: { id: documentId }, data: { status: "FINAL" } });
   }
 }
 
 export async function generateStageDocumentAction(
-  stageId: string,
-  documentType: string
+  _prev: DocActionState,
+  formData: FormData
 ): Promise<DocActionState> {
   const session = await requireRole(["STAF_PPK", "PPK", "ADMIN"]);
 
+  const stageId = String(formData.get("stageId") ?? "");
+  const documentType = String(formData.get("documentType") ?? "");
+
+  if (!stageId || !documentType) {
+    return { error: "Tahapan dan jenis dokumen wajib dipilih." };
+  }
   if (!GENERATABLE_DOCUMENT_TYPES.includes(documentType as (typeof GENERATABLE_DOCUMENT_TYPES)[number])) {
     return { error: "Jenis dokumen ini tidak dapat digenerate otomatis." };
   }
@@ -166,7 +169,8 @@ export async function signStageDocumentAction(documentId: string): Promise<DocAc
     },
   });
 
-  await maybeFinalize(documentId);
+  const signedRoles = new Set([...doc.signatures.map((s) => s.signerRole), "PPK"]);
+  await maybeFinalize(documentId, doc.documentType, signedRoles);
   await writeAudit({
     userId: session.userId,
     entityType: "stage_document",
@@ -189,7 +193,7 @@ export async function signStageDocumentAsVendorAction(documentId: string): Promi
   const doc = await prisma.stageDocument.findUnique({
     where: { id: documentId },
     include: {
-      stage: { include: { package: { include: { bids: true } } } },
+      stage: { include: { package: { include: { bids: { include: { vendor: true } } } } } },
       signatures: true,
     },
   });
@@ -211,7 +215,6 @@ export async function signStageDocumentAsVendorAction(documentId: string): Promi
     return { error: "Dokumen sudah ditandatangani penyedia." };
   }
 
-  const vendor = await prisma.vendor.findUnique({ where: { id: session.vendorId } });
   const code = makeVerificationCode();
   const hash = makeSignatureHash([documentId, "PENYEDIA", session.vendorId, Date.now()]);
 
@@ -220,13 +223,14 @@ export async function signStageDocumentAsVendorAction(documentId: string): Promi
       documentId,
       signerRole: "PENYEDIA",
       signerVendorId: session.vendorId,
-      signerName: `${session.fullName} (${vendor?.companyName ?? "Penyedia"})`,
+      signerName: `${session.fullName} (${winningBid.vendor.companyName})`,
       verificationCode: code,
       signatureHash: hash,
     },
   });
 
-  await maybeFinalize(documentId);
+  const signedRoles = new Set([...doc.signatures.map((s) => s.signerRole), "PENYEDIA"]);
+  await maybeFinalize(documentId, doc.documentType, signedRoles);
   await writeAudit({
     userId: session.userId,
     entityType: "stage_document",

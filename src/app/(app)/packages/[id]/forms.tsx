@@ -26,6 +26,7 @@ import {
   addAddendumAction,
   type FormState as ContractFormState,
 } from "@/actions/contract";
+import { generateStageDocumentAction, type DocActionState } from "@/actions/documents";
 
 const empty = {};
 
@@ -64,8 +65,17 @@ export function DraftForm({
   );
 }
 
-export function UploadDocForm({ stageId, suggestedType }: { stageId: string; suggestedType?: string }) {
+export function UploadDocForm({
+  stageId,
+  suggestedType,
+  typeOptions = [],
+}: {
+  stageId: string;
+  suggestedType?: string;
+  typeOptions?: { type: string; label: string }[];
+}) {
   const [state, formAction, pending] = useActionState<PkgFormState, FormData>(uploadStageDocumentAction, empty);
+  const listId = `doc-types-${stageId}`;
   return (
     <form action={formAction} className="flex flex-wrap items-end gap-2">
       <input type="hidden" name="stageId" value={stageId} />
@@ -73,10 +83,21 @@ export function UploadDocForm({ stageId, suggestedType }: { stageId: string; sug
         <label className="mb-1 block text-xs font-medium text-slate-600">Jenis Dokumen</label>
         <input
           name="documentType"
+          list={typeOptions.length > 0 ? listId : undefined}
           defaultValue={suggestedType}
           required
+          placeholder={typeOptions.length > 0 ? "Pilih atau ketik jenis dokumen" : undefined}
           className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs outline-none focus:border-blue-600"
         />
+        {typeOptions.length > 0 ? (
+          <datalist id={listId}>
+            {typeOptions.map((opt) => (
+              <option key={opt.type} value={opt.type}>
+                {opt.label}
+              </option>
+            ))}
+          </datalist>
+        ) : null}
       </div>
       <div className="min-w-[160px] flex-1">
         <label className="mb-1 block text-xs font-medium text-slate-600">Nama Berkas / Tautan</label>
@@ -90,6 +111,39 @@ export function UploadDocForm({ stageId, suggestedType }: { stageId: string; sug
         {pending ? "..." : "Unggah"}
       </Button>
       {state.error ? <p className="w-full text-xs text-red-600">{state.error}</p> : null}
+    </form>
+  );
+}
+
+export function GenerateDocumentForm({
+  stageId,
+  options,
+}: {
+  stageId: string;
+  options: { type: string; label: string }[];
+}) {
+  const [state, formAction, pending] = useActionState<DocActionState, FormData>(generateStageDocumentAction, empty);
+  return (
+    <form action={formAction} className="flex flex-wrap items-end gap-2">
+      <input type="hidden" name="stageId" value={stageId} />
+      <div className="w-56">
+        <label className="mb-1 block text-xs font-medium text-slate-600">Generate Dokumen Sistem</label>
+        <select
+          name="documentType"
+          required
+          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs outline-none focus:border-blue-600"
+        >
+          {options.map((opt) => (
+            <option key={opt.type} value={opt.type}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <Button type="submit" variant="secondary" disabled={pending} className="h-[30px] py-0 text-xs">
+        {pending ? "Membuat..." : "Generate"}
+      </Button>
+      <ErrorSuccess state={state} />
     </form>
   );
 }

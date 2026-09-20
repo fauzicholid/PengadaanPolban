@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import {
   DraftForm,
   UploadDocForm,
+  GenerateDocumentForm,
   CompleteStageForm,
   SubmitApprovalForm,
   DecideApprovalForm,
@@ -27,7 +28,6 @@ import {
   CancelForm,
 } from "./forms";
 import { approveStageDocumentAction } from "@/actions/package";
-import { generateStageDocumentAction } from "@/actions/documents";
 
 const TABS = [
   { key: "ringkasan", label: "Ringkasan" },
@@ -315,36 +315,29 @@ export default async function PackageDetailPage({
                     </Table>
                   )}
 
-                  {canGenerateDocs
-                    ? blueprint?.requiredDocuments
+                  {(() => {
+                    const generatableOptions =
+                      blueprint?.requiredDocuments
                         .filter(
                           (req) =>
                             (GENERATABLE_DOCUMENT_TYPES as readonly string[]).includes(req.type) &&
                             !stage.documents.some((d) => d.documentType === req.type && d.isGenerated)
                         )
-                        .map((req) => (
-                          <form
-                            key={req.type}
-                            action={async () => {
-                              "use server";
-                              await generateStageDocumentAction(stage.id, req.type);
-                            }}
-                          >
-                            <button
-                              type="submit"
-                              className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
-                            >
-                              Generate {DOCUMENT_TYPE_LABELS[req.type] ?? req.label}
-                            </button>
-                          </form>
-                        ))
-                    : null}
+                        .map((req) => ({ type: req.type, label: DOCUMENT_TYPE_LABELS[req.type] ?? req.label })) ?? [];
+                    return canGenerateDocs && generatableOptions.length > 0 ? (
+                      <GenerateDocumentForm stageId={stage.id} options={generatableOptions} />
+                    ) : null;
+                  })()}
 
                   {canAct && stage.status !== "COMPLETED" && stage.status !== "CANCELLED" ? (
                     <div className="space-y-3 border-t border-slate-100 pt-3">
                       <UploadDocForm
                         stageId={stage.id}
                         suggestedType={blueprint?.requiredDocuments[0]?.type}
+                        typeOptions={blueprint?.requiredDocuments.map((req) => ({
+                          type: req.type,
+                          label: DOCUMENT_TYPE_LABELS[req.type] ?? req.label,
+                        }))}
                       />
                       {!gate.ok ? (
                         <p className="text-xs text-amber-600">
