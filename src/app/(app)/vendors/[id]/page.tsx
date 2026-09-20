@@ -1,4 +1,4 @@
-import { requireSession } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import { PageHeader, Card, CardHeader, Table, Th, Td } from "@/components/ui";
@@ -12,7 +12,10 @@ export default async function VendorDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const session = await requireSession();
+  // Sama seperti direktori penyedia (/vendors): PENYEDIA sengaja tidak
+  // diberi akses agar tidak bisa melihat data kompetitor (NPWP, alamat,
+  // dokumen legalitas). Penyedia melihat profilnya sendiri lewat /vendor/profile.
+  const session = await requireRole(["ADMIN", "PPK", "STAF_PPK", "PEJABAT_PENGADAAN", "KPA", "SPI"]);
 
   const vendor = await prisma.vendor.findUnique({
     where: { id },

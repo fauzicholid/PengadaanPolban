@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -74,6 +74,24 @@ export default async function PackageDetailPage({
     },
   });
   if (!pkg) notFound();
+
+  // Object-level authorization: page-level session check alone is not
+  // enough — this fetches by raw id, so scope who may view THIS package
+  // the same way /packages already scopes the list, or any authenticated
+  // user could view any package's bids/HPS/contract/SPI findings by id.
+  const allowed =
+    ["ADMIN", "KPA", "SPI"].includes(session.role) ||
+    (session.role === "PPK" && pkg.ppkUserId === session.userId) ||
+    (session.role === "STAF_PPK" && pkg.stages.some((s) => s.picUserId === session.userId)) ||
+    (session.role === "PEJABAT_PENGADAAN" &&
+      pkg.stages.some(
+        (s) => s.picUserId === session.userId && ["PEMILIHAN", "EVALUASI", "NEGOSIASI"].includes(s.stageCode)
+      )) ||
+    (session.role === "PENYEDIA" &&
+      !!session.vendorId &&
+      (pkg.bids.some((b) => b.vendorId === session.vendorId) ||
+        pkg.invitations.some((i) => i.vendorId === session.vendorId)));
+  if (!allowed) redirect("/forbidden");
 
   const isOwnerPpk = session.role === "PPK" && pkg.ppkUserId === session.userId;
   const canGenerateDocs =
