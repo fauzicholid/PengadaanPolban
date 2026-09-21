@@ -9,6 +9,7 @@ import { STAGE_BLUEPRINT, GENERATABLE_DOCUMENT_TYPES, DOCUMENT_REQUIRED_SIGNERS,
 import { computeTiming, canCompleteStage } from "@/lib/workflow";
 import { canActOnStage } from "@/lib/stage-access";
 import { isHighValuePackage } from "@/lib/risk";
+import { canAccessPackage } from "@/lib/package-access";
 import { cn } from "@/lib/utils";
 import {
   DraftForm,
@@ -18,6 +19,7 @@ import {
   SubmitApprovalForm,
   DecideApprovalForm,
   AssignPejabatForm,
+  ApproveDocumentButton,
   InviteVendorForm,
   BidForm,
   EvaluateForm,
@@ -28,7 +30,6 @@ import {
   AddendumForm,
   CancelForm,
 } from "./forms";
-import { approveStageDocumentAction } from "@/actions/package";
 
 const TABS = [
   { key: "ringkasan", label: "Ringkasan" },
@@ -79,19 +80,8 @@ export default async function PackageDetailPage({
   // enough — this fetches by raw id, so scope who may view THIS package
   // the same way /packages already scopes the list, or any authenticated
   // user could view any package's bids/HPS/contract/SPI findings by id.
-  const allowed =
-    ["ADMIN", "KPA", "SPI"].includes(session.role) ||
-    (session.role === "PPK" && pkg.ppkUserId === session.userId) ||
-    (session.role === "STAF_PPK" && pkg.stages.some((s) => s.picUserId === session.userId)) ||
-    (session.role === "PEJABAT_PENGADAAN" &&
-      pkg.stages.some(
-        (s) => s.picUserId === session.userId && ["PEMILIHAN", "EVALUASI", "NEGOSIASI"].includes(s.stageCode)
-      )) ||
-    (session.role === "PENYEDIA" &&
-      !!session.vendorId &&
-      (pkg.bids.some((b) => b.vendorId === session.vendorId) ||
-        pkg.invitations.some((i) => i.vendorId === session.vendorId)));
-  if (!allowed) redirect("/forbidden");
+  if (!canAccessPackage(session, pkg)) redirect("/forbidden");
+  const isPenyedia = session.role === "PENYEDIA";
 
   const isOwnerPpk = session.role === "PPK" && pkg.ppkUserId === session.userId;
   const canGenerateDocs =
@@ -139,7 +129,8 @@ export default async function PackageDetailPage({
         </div>
         <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <Mini label="Pagu" value={formatRupiah(pkg.budgetCeiling)} />
-          <Mini label="HPS" value={formatRupiah(pkg.hpsValue)} />
+          {/* HPS (Harga Perkiraan Sendiri) is confidential — never shown to vendors, to avoid signaling ahead of/during selection. */}
+          {!isPenyedia ? <Mini label="HPS" value={formatRupiah(pkg.hpsValue)} /> : null}
           <Mini label="Nilai Kontrak" value={formatRupiah(pkg.contract?.contractValue ?? pkg.contractValue)} />
           <Mini label="Sumber Dana" value={pkg.rup.sourceFund ?? "-"} />
         </div>
@@ -202,7 +193,7 @@ export default async function PackageDetailPage({
         ))}
       </div>
 
-      {tab === "ringkasan" ? (
+      {tab === "ringkasan" && !isPenyedia ? (
         <div className="grid gap-4 lg:grid-cols-3">
           <Card className="p-5 lg:col-span-2">
             <h3 className="mb-3 text-sm font-semibold text-slate-900">
@@ -254,6 +245,13 @@ export default async function PackageDetailPage({
         </div>
       ) : null}
 
+      {tab === "ringkasan" && isPenyedia ? (
+        <Card className="p-5 text-sm text-slate-500">
+          Detail persiapan paket (KAK, HPS, rancangan kontrak) bersifat internal. Gunakan tab{" "}
+          <strong>Penyedia</strong> untuk undangan dan penawaran Anda.
+        </Card>
+      ) : null}
+
       {tab === "dokumen" ? (
         <div className="space-y-4">
           {pkg.stages.map((stage) => {
@@ -279,9 +277,24 @@ export default async function PackageDetailPage({
                   }
                 />
                 <div className="space-y-3 p-5">
-                  {stage.documents.length === 0 && (blueprint?.requiredDocuments.length ?? 0) === 0 ? (
-                    <p className="text-xs text-slate-400">Tidak ada dokumen wajib pada tahap ini.</p>
-                  ) : (
+                  {(() => {
+                    // Penyedia never sees internal drafting/review documents
+                    // (KAK, HPS breakdown, BA Reviu/Evaluasi notes, etc.) —
+                    // only public tender materials, their own contract, and
+                    // documents they're a required signer on.
+                    const visibleDocuments = isPenyedia
+                      ? stage.documents.filter(
+                          (d) =>
+                            d.documentType === "DOKUMEN_PEMILIHAN" ||
+                            d.documentType === "SPK_KONTRAK" ||
+                            (DOCUMENT_REQUIRED_SIGNERS[d.documentType] ?? []).includes("PENYEDIA")
+                        )
+                      : stage.documents;
+                    return visibleDocuments.length === 0 && (blueprint?.requiredDocuments.length ?? 0) === 0 ? (
+                      <p className="text-xs text-slate-400">Tidak ada dokumen wajib pada tahap ini.</p>
+                    ) : visibleDocuments.length === 0 ? (
+                      <p className="text-xs text-slate-400">Tidak ada dokumen yang relevan untuk Anda pada tahap ini.</p>
+                    ) : (
                     <Table>
                       <thead>
                         <tr>
@@ -295,7 +308,7 @@ export default async function PackageDetailPage({
                         </tr>
                       </thead>
                       <tbody>
-                        {stage.documents.map((doc) => {
+                        {visibleDocuments.map((doc) => {
                           const requiredSigners = DOCUMENT_REQUIRED_SIGNERS[doc.documentType] ?? [];
                           const signedRoles = new Set(doc.signatures.map((s) => s.signerRole));
                           return (
@@ -323,11 +336,7 @@ export default async function PackageDetailPage({
                                   </Link>
                                 ) : null}
                                 {canAct && doc.status === "UPLOADED" ? (
-                                  <form action={approveStageDocumentAction.bind(null, doc.id)} className="inline">
-                                    <button className="text-xs font-medium text-blue-700 hover:underline" type="submit">
-                                      Setujui
-                                    </button>
-                                  </form>
+                                  <ApproveDocumentButton documentId={doc.id} />
                                 ) : null}
                               </Td>
                             </tr>
@@ -335,7 +344,8 @@ export default async function PackageDetailPage({
                         })}
                       </tbody>
                     </Table>
-                  )}
+                    );
+                  })()}
 
                   {(() => {
                     const generatableOptions =
@@ -398,7 +408,7 @@ export default async function PackageDetailPage({
                     </div>
                   ) : null}
 
-                  {stage.approvals.length > 0 ? (
+                  {stage.approvals.length > 0 && !isPenyedia ? (
                     <div className="border-t border-slate-100 pt-3">
                       <p className="mb-1 text-xs font-medium text-slate-500">Riwayat Persetujuan</p>
                       {stage.approvals.map((a) => (
@@ -420,41 +430,45 @@ export default async function PackageDetailPage({
 
       {tab === "penyedia" ? (
         <div className="space-y-4">
-          <Card>
-            <CardHeader title="Undangan" subtitle="Hanya penyedia terverifikasi yang dapat diundang" />
-            <div className="space-y-4 p-5">
-              {session.role === "PEJABAT_PENGADAAN" ? (
-                <InviteVendorForm
-                  packageId={pkg.id}
-                  options={verifiedVendors.map((v) => ({ id: v.id, companyName: v.companyName }))}
-                />
-              ) : null}
-              {pkg.invitations.length === 0 ? (
-                <p className="text-xs text-slate-400">Belum ada undangan.</p>
-              ) : (
-                <Table>
-                  <thead>
-                    <tr>
-                      <Th>Penyedia</Th>
-                      <Th>Diundang</Th>
-                      <Th>Batas Waktu</Th>
-                      <Th>Merespons</Th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pkg.invitations.map((inv) => (
-                      <tr key={inv.id}>
-                        <Td>{inv.vendor.companyName}</Td>
-                        <Td className="text-xs">{formatDateTime(inv.invitedAt)}</Td>
-                        <Td className="text-xs">{formatDate(inv.deadlineAt)}</Td>
-                        <Td>{inv.responded ? "Ya" : "Belum"}</Td>
+          {!isPenyedia ? (
+            <Card>
+              <CardHeader title="Undangan" subtitle="Hanya penyedia terverifikasi yang dapat diundang" />
+              <div className="space-y-4 p-5">
+                {session.role === "PEJABAT_PENGADAAN" ? (
+                  <InviteVendorForm
+                    packageId={pkg.id}
+                    options={verifiedVendors.map((v) => ({ id: v.id, companyName: v.companyName }))}
+                  />
+                ) : null}
+                {/* Which other vendors were invited is not shared between
+                    competing vendors — only internal roles see the full list. */}
+                {pkg.invitations.length === 0 ? (
+                  <p className="text-xs text-slate-400">Belum ada undangan.</p>
+                ) : (
+                  <Table>
+                    <thead>
+                      <tr>
+                        <Th>Penyedia</Th>
+                        <Th>Diundang</Th>
+                        <Th>Batas Waktu</Th>
+                        <Th>Merespons</Th>
                       </tr>
-                    ))}
-                  </tbody>
-                </Table>
-              )}
-            </div>
-          </Card>
+                    </thead>
+                    <tbody>
+                      {pkg.invitations.map((inv) => (
+                        <tr key={inv.id}>
+                          <Td>{inv.vendor.companyName}</Td>
+                          <Td className="text-xs">{formatDateTime(inv.invitedAt)}</Td>
+                          <Td className="text-xs">{formatDate(inv.deadlineAt)}</Td>
+                          <Td>{inv.responded ? "Ya" : "Belum"}</Td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                )}
+              </div>
+            </Card>
+          ) : null}
 
           {session.role === "PENYEDIA" && myInvitation ? (
             <Card className="p-5">
@@ -509,11 +523,16 @@ export default async function PackageDetailPage({
       {tab === "evaluasi" ? (
         <Card>
           <CardHeader title="Evaluasi Penawaran" subtitle="Administrasi → Teknis → Harga → Klarifikasi/Negosiasi → Hasil" />
-          {pkg.bids.length === 0 ? (
-            <p className="px-5 py-8 text-center text-xs text-slate-400">Belum ada penawaran masuk.</p>
+          {/* Penyedia only ever sees their own bid here — competing vendors'
+              prices, technical scores, and evaluation notes are confidential
+              during/around an active selection. */}
+          {(isPenyedia ? (myBid ? [myBid] : []) : pkg.bids).length === 0 ? (
+            <p className="px-5 py-8 text-center text-xs text-slate-400">
+              {isPenyedia ? "Anda belum mengirimkan penawaran." : "Belum ada penawaran masuk."}
+            </p>
           ) : (
             <div className="divide-y divide-slate-100">
-              {pkg.bids.map((bid) => (
+              {(isPenyedia ? (myBid ? [myBid] : []) : pkg.bids).map((bid) => (
                 <div key={bid.id} className="space-y-2 p-5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
@@ -544,7 +563,13 @@ export default async function PackageDetailPage({
         </Card>
       ) : null}
 
-      {tab === "kontrak" ? (
+      {tab === "kontrak" && isPenyedia && pkg.contract && pkg.contract.vendorId !== session.vendorId ? (
+        <Card className="p-5 text-sm text-slate-500">
+          Detail kontrak hanya ditampilkan kepada penyedia yang bersangkutan.
+        </Card>
+      ) : null}
+
+      {tab === "kontrak" && (!isPenyedia || !pkg.contract || pkg.contract.vendorId === session.vendorId) ? (
         <div className="space-y-4">
           {!pkg.contract ? (
             isOwnerPpk ? (
@@ -632,7 +657,13 @@ export default async function PackageDetailPage({
         </div>
       ) : null}
 
-      {tab === "reviu" ? (
+      {tab === "reviu" && isPenyedia ? (
+        <Card className="p-5 text-sm text-slate-500">
+          Reviu/pengawasan internal SPI tidak ditampilkan kepada penyedia.
+        </Card>
+      ) : null}
+
+      {tab === "reviu" && !isPenyedia ? (
         <Card>
           <CardHeader title="Reviu SPI" subtitle="Permintaan reviu, temuan, dan tindak lanjut terkait paket ini" />
           {pkg.spiRequests.length === 0 ? (

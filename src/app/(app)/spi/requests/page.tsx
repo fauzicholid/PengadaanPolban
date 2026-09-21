@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { PageHeader, Card, Table, Th, Td, EmptyState } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
 import { formatDate } from "@/lib/format";
+import { canAccessPackage } from "@/lib/package-access";
 import { CreateReviewRequestForm } from "../spi-forms";
 import Link from "next/link";
 
@@ -14,10 +15,16 @@ export default async function SpiRequestsPage({
   const session = await requireSession();
   const { packageId } = await searchParams;
 
-  const requests = await prisma.spiReviewRequest.findMany({
-    include: { package: true, review: true, requester: true },
+  const allRequests = await prisma.spiReviewRequest.findMany({
+    include: { package: { include: { stages: true } }, review: true, requester: true },
     orderBy: { requestedAt: "desc" },
   });
+  // Same rule as the detail page: SPI findings are internal, vendors never
+  // see them; other roles only see requests tied to a package they're on.
+  const requests =
+    session.role === "PENYEDIA"
+      ? []
+      : allRequests.filter((r) => canAccessPackage(session, r.package));
 
   const canCreate = session.role === "KPA" || session.role === "PPK";
   const packages = canCreate

@@ -7,10 +7,10 @@ import {
   RegisterVendorForm,
   ProfileForm,
   KbliForm,
+  RemoveKbliButton,
   DocumentForm,
   SubmitVerificationButton,
 } from "./forms";
-import { removeVendorKbliAction } from "@/actions/vendor";
 
 export default async function VendorProfilePage() {
   const session = await requireRole(["PENYEDIA"]);
@@ -86,11 +86,7 @@ export default async function VendorProfilePage() {
                     <Td>{k.kbli.title}</Td>
                     <Td>{k.licenseStatus ?? "-"}</Td>
                     <Td>
-                      <form action={removeVendorKbliAction.bind(null, k.id)}>
-                        <button className="text-xs text-red-600 hover:underline" type="submit">
-                          Hapus
-                        </button>
-                      </form>
+                      <RemoveKbliButton vendorKbliId={k.id} />
                     </Td>
                   </tr>
                 ))}

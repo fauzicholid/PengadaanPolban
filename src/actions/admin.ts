@@ -64,10 +64,14 @@ export async function createUserAction(
   return { success: "Pengguna berhasil dibuat. Kata sandi awal: polban123" };
 }
 
-export async function toggleUserStatusAction(userId: string) {
+export async function toggleUserStatusAction(
+  _prev: FormState,
+  formData: FormData
+): Promise<FormState> {
   const session = await requireRole(["ADMIN"]);
+  const userId = String(formData.get("userId") ?? "");
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) return;
+  if (!user) return { error: "Pengguna tidak ditemukan." };
   const newStatus = user.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
   await prisma.user.update({ where: { id: userId }, data: { status: newStatus } });
 
@@ -79,6 +83,9 @@ export async function toggleUserStatusAction(userId: string) {
   });
 
   revalidatePath("/admin/users");
+  return {
+    success: newStatus === "ACTIVE" ? "Pengguna berhasil diaktifkan." : "Pengguna berhasil dinonaktifkan.",
+  };
 }
 
 export async function createKbliAction(

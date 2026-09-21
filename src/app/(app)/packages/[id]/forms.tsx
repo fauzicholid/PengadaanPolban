@@ -9,6 +9,7 @@ import {
   submitStageForApprovalAction,
   decideStageApprovalAction,
   assignPejabatPengadaanAction,
+  approveStageDocumentAction,
   cancelPackageAction,
   type FormState as PkgFormState,
 } from "@/actions/package";
@@ -34,6 +35,19 @@ function ErrorSuccess({ state }: { state: { error?: string; success?: string } }
   if (state.error) return <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{state.error}</p>;
   if (state.success) return <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{state.success}</p>;
   return null;
+}
+
+export function ApproveDocumentButton({ documentId }: { documentId: string }) {
+  const [state, formAction, pending] = useActionState(approveStageDocumentAction, empty as PkgFormState);
+  return (
+    <form action={formAction} className="inline">
+      <input type="hidden" name="documentId" value={documentId} />
+      <button className="text-xs font-medium text-blue-700 hover:underline disabled:opacity-60" type="submit" disabled={pending}>
+        {pending ? "Memproses..." : "Setujui"}
+      </button>
+      {state.error ? <p className="mt-1 text-[11px] text-red-600">{state.error}</p> : null}
+    </form>
+  );
 }
 
 export function DraftForm({

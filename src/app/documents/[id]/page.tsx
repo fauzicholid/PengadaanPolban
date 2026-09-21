@@ -1,11 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { getDocumentWithAccess } from "@/lib/document-access";
-import {
-  signStageDocumentAction,
-  signStageDocumentAsVendorAction,
-  signStageDocumentAsKpaAction,
-} from "@/actions/documents";
+import { renderLetterheadHtml } from "@/lib/document-template";
+import { SignAsPpkForm, SignAsVendorForm, SignAsKpaForm } from "./sign-forms";
 import { qrDataUrl, verifyUrl } from "@/lib/qr";
 import { DOCUMENT_TYPE_LABELS, DOCUMENT_REQUIRED_SIGNERS, ROLE_LABELS } from "@/lib/constants";
 import { formatDateTime } from "@/lib/format";
@@ -63,8 +60,12 @@ export default async function DocumentViewerPage({
     <div className="min-h-screen bg-slate-100 py-8">
       <style>{`
         .doc-paper { background: white; }
+        .doc-paper .doc-letterhead { text-align: center; margin-bottom: 0.75rem; }
+        .doc-paper .doc-letterhead-ministry { font-size: 0.8rem; font-weight: 600; letter-spacing: 0.02em; color: #1e293b; margin: 0; }
+        .doc-paper .doc-letterhead-institution { font-size: 1.05rem; font-weight: 700; letter-spacing: 0.03em; color: #1e293b; margin: 0.1rem 0; }
+        .doc-paper .doc-letterhead-address { font-size: 0.7rem; color: #475569; line-height: 1.4; margin: 0; }
+        .doc-paper .doc-letterhead-rule { margin: 0.5rem 0 1.5rem; border: none; border-top: 3px double #1e293b; }
         .doc-paper .doc-header { text-align: center; margin-bottom: 1.5rem; }
-        .doc-paper .doc-kop { font-size: 0.75rem; color: #475569; line-height: 1.4; }
         .doc-paper h1 { font-size: 1.1rem; font-weight: 700; margin-top: 0.5rem; letter-spacing: 0.02em; }
         .doc-paper .doc-number { font-size: 0.8rem; color: #64748b; }
         .doc-paper .doc-body { font-size: 0.9rem; line-height: 1.7; color: #1e293b; }
@@ -86,6 +87,7 @@ export default async function DocumentViewerPage({
       </div>
 
       <div className="doc-paper mx-auto max-w-3xl rounded-xl border border-slate-200 p-10 shadow-sm">
+        <div dangerouslySetInnerHTML={{ __html: renderLetterheadHtml() }} />
         <div dangerouslySetInnerHTML={{ __html: doc.contentHtml }} />
 
         <div className="mt-10 grid gap-8 border-t border-slate-200 pt-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -103,54 +105,12 @@ export default async function DocumentViewerPage({
               ) : (
                 <div className="flex h-32 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 text-xs text-slate-400">
                   <span>Menunggu tanda tangan</span>
-                  {role === "PPK" && canSignAsPpk ? (
-                    <form
-                      action={async () => {
-                        "use server";
-                        await signStageDocumentAction(doc.id);
-                      }}
-                    >
-                      <button
-                        type="submit"
-                        className="no-print rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-800"
-                      >
-                        Tanda Tangani (PPK)
-                      </button>
-                    </form>
-                  ) : null}
-                  {role === "PENYEDIA" && canSignAsVendor ? (
-                    <form
-                      action={async () => {
-                        "use server";
-                        await signStageDocumentAsVendorAction(doc.id);
-                      }}
-                    >
-                      <button
-                        type="submit"
-                        className="no-print rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-800"
-                      >
-                        Tanda Tangani (Penyedia)
-                      </button>
-                    </form>
-                  ) : null}
+                  {role === "PPK" && canSignAsPpk ? <SignAsPpkForm documentId={doc.id} /> : null}
+                  {role === "PENYEDIA" && canSignAsVendor ? <SignAsVendorForm documentId={doc.id} /> : null}
                   {role === "KPA" && !signedByRole.has("PPK") ? (
                     <span className="text-[10px] text-slate-400">Menunggu tanda tangan PPK terlebih dahulu</span>
                   ) : null}
-                  {role === "KPA" && canSignAsKpa ? (
-                    <form
-                      action={async () => {
-                        "use server";
-                        await signStageDocumentAsKpaAction(doc.id);
-                      }}
-                    >
-                      <button
-                        type="submit"
-                        className="no-print rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-800"
-                      >
-                        Tanda Tangani (KPA)
-                      </button>
-                    </form>
-                  ) : null}
+                  {role === "KPA" && canSignAsKpa ? <SignAsKpaForm documentId={doc.id} /> : null}
                 </div>
               )}
             </div>

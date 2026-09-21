@@ -6,6 +6,12 @@ import type { Prisma } from "@/generated/prisma/client";
 import { requireRole } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
 import { renderStageDocumentHtml } from "@/lib/document-template";
+import {
+  buildMailMergeData,
+  renderDocxTemplate,
+  docxBufferToHtml,
+  DocxTemplateError,
+} from "@/lib/document-mailmerge";
 import { makeVerificationCode, makeSignatureHash } from "@/lib/qr";
 import {
   GENERATABLE_DOCUMENT_TYPES,
@@ -69,25 +75,75 @@ export async function generateStageDocumentAction(
     winningBid = bids.find((b) => b.status === "WINNER") ?? null;
   }
 
-  const html = renderStageDocumentHtml({
-    documentType,
-    pkg: stage.package,
-    stage,
-    bids: bids.map((b) => ({
-      vendor: { companyName: b.vendor.companyName },
-      offeredValue: b.offeredValue,
-      status: b.status,
-      technicalScore: b.technicalScore,
-    })),
-    winningBid: winningBid
-      ? {
-          vendor: { companyName: winningBid.vendor.companyName },
-          offeredValue: winningBid.offeredValue,
-          status: winningBid.status,
-          technicalScore: winningBid.technicalScore,
-        }
-      : null,
+  type ContractWithVendor = Prisma.ContractGetPayload<{ include: { vendor: true } }>;
+  let contract: ContractWithVendor | null = null;
+  if (documentType === "SPK_KONTRAK") {
+    contract = await prisma.contract.findUnique({
+      where: { packageId: stage.packageId },
+      include: { vendor: true },
+    });
+    if (!contract) {
+      return { error: "Data kontrak belum dibuat. Lengkapi tab Kontrak terlebih dahulu." };
+    }
+  }
+
+  const bidsForTemplate = bids.map((b) => ({
+    vendor: { companyName: b.vendor.companyName },
+    offeredValue: b.offeredValue,
+    status: b.status,
+    technicalScore: b.technicalScore,
+  }));
+  const winningBidForTemplate = winningBid
+    ? {
+        vendor: { companyName: winningBid.vendor.companyName },
+        offeredValue: winningBid.offeredValue,
+        status: winningBid.status,
+        technicalScore: winningBid.technicalScore,
+      }
+    : null;
+  const contractForTemplate = contract
+    ? {
+        contractNumber: contract.contractNumber,
+        contractValue: contract.contractValue,
+        startDate: contract.startDate,
+        endDate: contract.endDate,
+        vendor: { companyName: contract.vendor.companyName },
+      }
+    : null;
+
+  const docTemplate = await prisma.documentTemplate.findFirst({
+    where: { documentType, active: true },
+    orderBy: { uploadedAt: "desc" },
   });
+
+  let html: string;
+  if (docTemplate) {
+    const documentNumber = `${documentType}/${stage.package.packageCode}/${Date.now()}`;
+    const mailMergeData = buildMailMergeData({
+      documentType,
+      documentNumber,
+      pkg: stage.package,
+      stage,
+      bids: bidsForTemplate,
+      winningBid: winningBidForTemplate,
+      contract: contractForTemplate,
+    });
+    try {
+      const filledDocx = renderDocxTemplate(Buffer.from(docTemplate.fileData), mailMergeData);
+      html = await docxBufferToHtml(filledDocx);
+    } catch (err) {
+      return { error: err instanceof DocxTemplateError ? err.message : "Gagal memproses template dokumen." };
+    }
+  } else {
+    html = renderStageDocumentHtml({
+      documentType,
+      pkg: stage.package,
+      stage,
+      bids: bidsForTemplate,
+      winningBid: winningBidForTemplate,
+      contract: contractForTemplate,
+    });
+  }
 
   const existing = await prisma.stageDocument.findFirst({
     where: { stageId, documentType },
@@ -137,8 +193,13 @@ export async function generateStageDocumentAction(
   return { success: `${DOCUMENT_TYPE_LABELS[documentType] ?? documentType} berhasil digenerate.` };
 }
 
-export async function signStageDocumentAction(documentId: string): Promise<DocActionState> {
+export async function signStageDocumentAction(
+  _prev: DocActionState,
+  formData: FormData
+): Promise<DocActionState> {
   const session = await requireRole(["PPK", "ADMIN"]);
+  const documentId = String(formData.get("documentId") ?? "");
+  if (!documentId) return { error: "Dokumen tidak ditemukan." };
 
   const doc = await prisma.stageDocument.findUnique({
     where: { id: documentId },
@@ -184,11 +245,16 @@ export async function signStageDocumentAction(documentId: string): Promise<DocAc
   return { success: "Dokumen berhasil ditandatangani." };
 }
 
-export async function signStageDocumentAsVendorAction(documentId: string): Promise<DocActionState> {
+export async function signStageDocumentAsVendorAction(
+  _prev: DocActionState,
+  formData: FormData
+): Promise<DocActionState> {
   const session = await requireRole(["PENYEDIA"]);
   if (!session.vendorId) {
     return { error: "Lengkapi registrasi penyedia terlebih dahulu." };
   }
+  const documentId = String(formData.get("documentId") ?? "");
+  if (!documentId) return { error: "Dokumen tidak ditemukan." };
 
   const doc = await prisma.stageDocument.findUnique({
     where: { id: documentId },
@@ -246,8 +312,13 @@ export async function signStageDocumentAsVendorAction(documentId: string): Promi
 
 // Serah terima PPK -> KPA: KPA hanya dapat menandatangani BAST setelah PPK
 // menandatangani lebih dulu (lihat urutan pada DOCUMENT_REQUIRED_SIGNERS).
-export async function signStageDocumentAsKpaAction(documentId: string): Promise<DocActionState> {
+export async function signStageDocumentAsKpaAction(
+  _prev: DocActionState,
+  formData: FormData
+): Promise<DocActionState> {
   const session = await requireRole(["KPA", "ADMIN"]);
+  const documentId = String(formData.get("documentId") ?? "");
+  if (!documentId) return { error: "Dokumen tidak ditemukan." };
 
   const doc = await prisma.stageDocument.findUnique({
     where: { id: documentId },

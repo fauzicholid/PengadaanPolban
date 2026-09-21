@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
+import { canAccessPackage } from "@/lib/package-access";
 
 export async function getDocumentWithAccess(documentId: string) {
   const session = await requireSession();
@@ -9,7 +10,15 @@ export async function getDocumentWithAccess(documentId: string) {
     include: {
       stage: {
         include: {
-          package: { include: { bids: true, rup: { include: { workUnit: true } }, ppk: true } },
+          package: {
+            include: {
+              bids: true,
+              invitations: true,
+              stages: true,
+              rup: { include: { workUnit: true } },
+              ppk: true,
+            },
+          },
         },
       },
       signatures: { include: { signerUser: true, signerVendor: true }, orderBy: { signedAt: "asc" } },
@@ -18,12 +27,12 @@ export async function getDocumentWithAccess(documentId: string) {
   if (!doc) return { session, doc: null, allowed: false };
 
   const winningBid = doc.stage.package.bids.find((b) => b.status === "WINNER");
+  // STAF_PPK/PEJABAT_PENGADAAN must actually be assigned on this package
+  // (canAccessPackage), not any document system-wide; PENYEDIA is narrower
+  // still — only the winning vendor of THIS package, not just any bidder.
   const allowed =
-    ["ADMIN", "SPI", "KPA"].includes(session.role) ||
-    (session.role === "PPK" && doc.stage.package.ppkUserId === session.userId) ||
-    session.role === "STAF_PPK" ||
-    session.role === "PEJABAT_PENGADAAN" ||
-    (session.role === "PENYEDIA" && !!winningBid && winningBid.vendorId === session.vendorId);
+    canAccessPackage(session, doc.stage.package) &&
+    (session.role !== "PENYEDIA" || (!!winningBid && winningBid.vendorId === session.vendorId));
 
   return { session, doc, allowed, winningBid };
 }

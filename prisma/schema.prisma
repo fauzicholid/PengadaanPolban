@@ -225,6 +225,7 @@ model User {
   auditLogs            AuditLog[]
   notifications        Notification[]
   documentSignatures   DocumentSignature[] @relation("DocumentSigner")
+  uploadedDocumentTemplates DocumentTemplate[] @relation("DocumentTemplateUploader")
 
   @@map("users")
 }
@@ -497,6 +498,25 @@ model StageDocument {
   signatures DocumentSignature[]
 
   @@map("stage_documents")
+}
+
+// Master data template .docx (BA/Kontrak) tanpa kop surat, diunggah Admin.
+// Saat generate dokumen, sistem melakukan mail-merge data paket/tahapan ke
+// dalam template ini (bila tersedia), lalu kop surat ditambahkan seragam
+// oleh sistem pada tampilan/cetak dokumen (lihat renderLetterheadHtml).
+model DocumentTemplate {
+  id           String   @id @default(uuid())
+  documentType String   @map("document_type")
+  name         String
+  fileName     String   @map("file_name")
+  fileData     Bytes    @map("file_data")
+  active       Boolean  @default(true)
+  uploadedById String   @map("uploaded_by")
+  uploadedAt   DateTime @default(now()) @map("uploaded_at")
+
+  uploadedBy User @relation("DocumentTemplateUploader", fields: [uploadedById], references: [id])
+
+  @@map("document_templates")
 }
 
 model DocumentSignature {

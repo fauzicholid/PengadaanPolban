@@ -60,11 +60,15 @@ export function CreateUserForm({
 }
 
 export function ToggleStatusButton({ userId, status }: { userId: string; status: string }) {
+  const [state, formAction, pending] = useActionState(toggleUserStatusAction, empty);
   return (
-    <form action={toggleUserStatusAction.bind(null, userId)}>
-      <button type="submit" className="text-xs font-medium text-blue-700 hover:underline">
-        {status === "ACTIVE" ? "Nonaktifkan" : "Aktifkan"}
+    <form action={formAction}>
+      <input type="hidden" name="userId" value={userId} />
+      <button type="submit" disabled={pending} className="text-xs font-medium text-blue-700 hover:underline disabled:opacity-60">
+        {pending ? "Memproses..." : status === "ACTIVE" ? "Nonaktifkan" : "Aktifkan"}
       </button>
+      {state.error ? <p className="mt-1 text-[11px] text-red-600">{state.error}</p> : null}
+      {state.success ? <p className="mt-1 text-[11px] text-emerald-600">{state.success}</p> : null}
     </form>
   );
 }

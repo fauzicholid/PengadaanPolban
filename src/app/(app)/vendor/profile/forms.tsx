@@ -5,6 +5,7 @@ import {
   registerVendorAction,
   updateVendorProfileAction,
   addVendorKbliAction,
+  removeVendorKbliAction,
   uploadVendorDocumentAction,
   submitVendorForVerificationAction,
   type FormState,
@@ -90,6 +91,19 @@ export function KbliForm({ options }: { options: { id: string; code: string; tit
       </div>
       <Button type="submit" variant="secondary" disabled={pending}>Tambah</Button>
       {state.error ? <p className="w-full text-xs text-red-600">{state.error}</p> : null}
+    </form>
+  );
+}
+
+export function RemoveKbliButton({ vendorKbliId }: { vendorKbliId: string }) {
+  const [state, formAction, pending] = useActionState(removeVendorKbliAction, initialState);
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="vendorKbliId" value={vendorKbliId} />
+      <button className="text-xs text-red-600 hover:underline disabled:opacity-60" type="submit" disabled={pending}>
+        {pending ? "Menghapus..." : "Hapus"}
+      </button>
+      {state.error ? <p className="mt-1 text-[11px] text-red-600">{state.error}</p> : null}
     </form>
   );
 }

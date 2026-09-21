@@ -242,8 +242,12 @@ export const STAGE_BLUEPRINT: StageBlueprint[] = [
 // Jenis dokumen "Berita Acara"/administratif yang dapat digenerate otomatis
 // oleh sistem (diisi Staf PPK), lalu divalidasi lewat tanda tangan digital
 // (nama, waktu, kode verifikasi + QR) alih-alih proses cetak-tanda tangan-pindai manual.
-export const GENERATABLE_DOCUMENT_TYPES = ["BA_REVIU", "BA_EVALUASI", "BA_HASIL", "BAST"] as const;
+export const GENERATABLE_DOCUMENT_TYPES = ["BA_REVIU", "BA_EVALUASI", "BA_HASIL", "BAST", "SPK_KONTRAK"] as const;
 export type GeneratableDocumentType = (typeof GENERATABLE_DOCUMENT_TYPES)[number];
+
+// Jenis dokumen yang dapat memiliki template .docx master (Admin > Template Dokumen).
+export const TEMPLATABLE_DOCUMENT_TYPES = GENERATABLE_DOCUMENT_TYPES;
+export type TemplatableDocumentType = GeneratableDocumentType;
 
 export const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   KAK_SPESIFIKASI: "KAK/Spesifikasi",
@@ -266,6 +270,7 @@ export const DOCUMENT_REQUIRED_SIGNERS: Record<string, DocumentSignerRole[]> = {
   BA_EVALUASI: ["PPK"],
   BA_HASIL: ["PPK", "PENYEDIA"],
   BAST: ["PPK", "PENYEDIA", "KPA"],
+  SPK_KONTRAK: ["PPK", "PENYEDIA"],
 };
 
 export const STAGE_TO_PACKAGE_STATUS: Record<StageCode, PackageStatus> = {
@@ -342,6 +347,7 @@ export const MENU_STRUCTURE: {
     items: [
       { label: "Pengguna & Penugasan", href: "/admin/users", roles: ["ADMIN"] },
       { label: "Master KBLI", href: "/admin/kbli", roles: ["ADMIN"] },
+      { label: "Template Dokumen BA/Kontrak", href: "/admin/templates", roles: ["ADMIN"] },
       { label: "Jejak Audit", href: "/audit-logs", roles: ["ADMIN", "SPI"] },
     ],
   },

@@ -1,10 +1,11 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PageHeader, Card, CardHeader, Table, Th, Td } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
 import { formatDate, formatDateTime, formatRupiah } from "@/lib/format";
 import { RISK_LEVEL_LABELS } from "@/lib/constants";
+import { canAccessPackage } from "@/lib/package-access";
 import { StartReviewForm, AddFindingForm, CloseReviewForm } from "../../spi-forms";
 import Link from "next/link";
 
@@ -26,6 +27,13 @@ export default async function SpiRequestDetailPage({ params }: { params: Promise
     },
   });
   if (!request) notFound();
+
+  // SPI findings are internal oversight content — vendors never see them,
+  // regardless of any bid/invitation relationship to the package; other
+  // roles need to actually be tied to this specific package.
+  if (session.role === "PENYEDIA" || !canAccessPackage(session, request.package)) {
+    redirect("/forbidden");
+  }
 
   const picCandidates = Array.from(
     new Map(

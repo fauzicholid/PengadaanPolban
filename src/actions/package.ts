@@ -190,16 +190,20 @@ export async function uploadStageDocumentAction(
   return { success: "Dokumen berhasil diunggah." };
 }
 
-export async function approveStageDocumentAction(documentId: string) {
+export async function approveStageDocumentAction(
+  _prev: FormState,
+  formData: FormData
+): Promise<FormState> {
   const session = await requireSession();
+  const documentId = String(formData.get("documentId") ?? "");
   const doc = await prisma.stageDocument.findUnique({
     where: { id: documentId },
     include: { stage: { include: { package: true } } },
   });
-  if (!doc) return;
+  if (!doc) return { error: "Dokumen tidak ditemukan." };
   const isOwnerPpk = session.role === "PPK" && doc.stage.package.ppkUserId === session.userId;
   const canApprove = session.role === "ADMIN" || isOwnerPpk || canActOnStage(session.role, doc.stage.stageCode);
-  if (!canApprove) return;
+  if (!canApprove) return { error: "Anda tidak berwenang menyetujui dokumen ini." };
 
   await prisma.stageDocument.update({
     where: { id: documentId },
@@ -214,6 +218,7 @@ export async function approveStageDocumentAction(documentId: string) {
   });
 
   revalidatePath(`/packages/${doc.stage.packageId}`);
+  return { success: "Dokumen berhasil disetujui." };
 }
 
 async function activateNextStage(packageId: string) {

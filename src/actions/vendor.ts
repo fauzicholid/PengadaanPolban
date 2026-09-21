@@ -203,12 +203,19 @@ export async function addVendorKbliAction(
   return { success: "KBLI ditambahkan." };
 }
 
-export async function removeVendorKbliAction(vendorKbliId: string) {
+export async function removeVendorKbliAction(
+  _prev: FormState,
+  formData: FormData
+): Promise<FormState> {
   const session = await requireRole(["PENYEDIA"]);
+  const vendorKbliId = String(formData.get("vendorKbliId") ?? "");
   const link = await prisma.vendorKbli.findUnique({ where: { id: vendorKbliId } });
-  if (!link || link.vendorId !== session.vendorId) return;
+  if (!link || link.vendorId !== session.vendorId) {
+    return { error: "KBLI tidak ditemukan." };
+  }
   await prisma.vendorKbli.delete({ where: { id: vendorKbliId } });
   revalidatePath("/vendor/profile");
+  return { success: "KBLI berhasil dihapus." };
 }
 
 export async function uploadVendorDocumentAction(

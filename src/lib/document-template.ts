@@ -24,6 +24,14 @@ interface BidLike {
   technicalScore: DecimalLike | null;
 }
 
+interface ContractLike {
+  contractNumber: string;
+  contractValue: DecimalLike;
+  startDate: Date;
+  endDate: Date;
+  vendor: { companyName: string };
+}
+
 function esc(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -38,14 +46,34 @@ function documentNumber(documentType: string, packageCode: string) {
   return `${documentType}/${packageCode}/${stamp}`;
 }
 
+// Kop surat resmi Politeknik Negeri Bandung (teks, belum ada berkas logo).
+// Dipisah dari renderStageDocumentHtml agar dapat dipakai ulang di atas
+// dokumen hasil template admin (BA/Kontrak) maupun dokumen hasil generate sistem.
+export function renderLetterheadHtml(): string {
+  return `
+    <div class="doc-letterhead">
+      <p class="doc-letterhead-ministry">KEMENTERIAN PENDIDIKAN TINGGI, SAINS, DAN TEKNOLOGI</p>
+      <p class="doc-letterhead-institution">POLITEKNIK NEGERI BANDUNG</p>
+      <p class="doc-letterhead-address">
+        Jl. Gegerkalong Hilir, Ds. Ciwaruga, Kotak Pos 1234, Bandung 40012
+      </p>
+      <p class="doc-letterhead-address">
+        Telepon (022) 2013789 (Hunting) &middot; Faksimile (022) 2013889 &middot; Laman www.polban.ac.id
+      </p>
+    </div>
+    <hr class="doc-letterhead-rule" />
+  `;
+}
+
 export function renderStageDocumentHtml(params: {
   documentType: string;
   pkg: PackageLike;
   stage: StageLike;
   bids?: BidLike[];
   winningBid?: BidLike | null;
+  contract?: ContractLike | null;
 }): string {
-  const { documentType, pkg, stage, bids = [], winningBid } = params;
+  const { documentType, pkg, stage, bids = [], winningBid, contract } = params;
   const label = DOCUMENT_TYPE_LABELS[documentType] ?? documentType;
   const number = documentNumber(documentType, pkg.packageCode);
   const today = formatDate(new Date());
@@ -94,13 +122,24 @@ export function renderStageDocumentHtml(params: {
     body = `
       <p>Pada hari ini, ${today}, telah dilaksanakan serah terima hasil pekerjaan/barang untuk paket <strong>${esc(pkg.packageName)}</strong> (${esc(pkg.packageCode)}) dengan nilai kontrak ${formatRupiah(pkg.budgetCeiling)} antara Pejabat Pembuat Komitmen dan penyedia barang/jasa.</p>
       <p>Pekerjaan/barang dinyatakan telah diterima sesuai dengan spesifikasi dan ketentuan yang tercantum dalam kontrak/SPK.</p>`;
+  } else if (documentType === "SPK_KONTRAK") {
+    body = contract
+      ? `
+      <p>Surat Perjanjian Kerja/Kontrak untuk paket <strong>${esc(pkg.packageName)}</strong> (${esc(pkg.packageCode)}) ditetapkan dengan ketentuan sebagai berikut:</p>
+      <table><tbody>
+        <tr><th>Nomor Kontrak</th><td>${esc(contract.contractNumber)}</td></tr>
+        <tr><th>Penyedia</th><td>${esc(contract.vendor.companyName)}</td></tr>
+        <tr><th>Nilai Kontrak</th><td>${formatRupiah(contract.contractValue)}</td></tr>
+        <tr><th>Masa Berlaku</th><td>${formatDate(contract.startDate)} s.d. ${formatDate(contract.endDate)}</td></tr>
+      </tbody></table>
+      <p>Kedua belah pihak sepakat untuk melaksanakan pekerjaan sesuai dengan spesifikasi, jadwal, dan ketentuan yang berlaku.</p>`
+      : `<p><em>Data kontrak belum tersedia untuk paket ${esc(pkg.packageName)} (${esc(pkg.packageCode)}).</em></p>`;
   } else {
     body = `<p>Dokumen ${esc(label)} untuk paket <strong>${esc(pkg.packageName)}</strong> (${esc(pkg.packageCode)}).</p>`;
   }
 
   return `
     <div class="doc-header">
-      <p class="doc-kop">SISTEM INFORMASI PENGADAAN BARANG/JASA<br/>POLITEKNIK NEGERI BANDUNG</p>
       <h1>${esc(label).toUpperCase()}</h1>
       <p class="doc-number">Nomor: ${esc(number)}</p>
     </div>

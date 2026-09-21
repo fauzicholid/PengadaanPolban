@@ -3,26 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { PageHeader, Card, Table, Th, Td, LinkButton, EmptyState, ProgressBar } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
 import { formatRupiah } from "@/lib/format";
+import { packageAccessWhereClause } from "@/lib/package-access";
 import Link from "next/link";
 
 export default async function PackagesPage() {
   const session = await requireSession();
-
-  let where = {};
-  if (session.role === "PPK") where = { ppkUserId: session.userId };
-  if (session.role === "STAF_PPK") where = { stages: { some: { picUserId: session.userId } } };
-  if (session.role === "PEJABAT_PENGADAAN")
-    where = { stages: { some: { picUserId: session.userId, stageCode: { in: ["PEMILIHAN", "EVALUASI", "NEGOSIASI"] } } } };
-  if (session.role === "PENYEDIA" && session.vendorId) {
-    where = {
-      OR: [
-        { bids: { some: { vendorId: session.vendorId } } },
-        { invitations: { some: { vendorId: session.vendorId } } },
-      ],
-    };
-  } else if (session.role === "PENYEDIA") {
-    where = { id: "__none__" };
-  }
+  const where = packageAccessWhereClause(session);
 
   const packages = await prisma.procurementPackage.findMany({
     where,
