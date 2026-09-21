@@ -19,6 +19,8 @@ import {
   SubmitApprovalForm,
   DecideApprovalForm,
   AssignPejabatForm,
+  AcceptAssignmentForm,
+  ReturnAssignmentForm,
   ApproveDocumentButton,
   InviteVendorForm,
   BidForm,
@@ -220,14 +222,29 @@ export default async function PackageDetailPage({
           <div className="space-y-4">
             <Card className="p-5">
               <h3 className="mb-2 text-sm font-semibold text-slate-900">Penugasan Pejabat Pengadaan</h3>
-              {isOwnerPpk ? (
-                <AssignPejabatForm packageId={pkg.id} options={pejabatOptions} />
-              ) : (
-                <p className="text-xs text-slate-500">
-                  {pkg.stages.find((s) => s.stageCode === "PEMILIHAN")?.pic?.fullName ??
-                    "Belum ditugaskan."}
-                </p>
-              )}
+              {(() => {
+                const pemilihanStage = pkg.stages.find((s) => s.stageCode === "PEMILIHAN");
+                return (
+                  <>
+                    {pemilihanStage?.pic ? (
+                      <p className="mb-2 text-xs text-slate-500">
+                        {pemilihanStage.pic.fullName}
+                        {pemilihanStage.status === "WAITING_ACCEPTANCE" ? " · menunggu konfirmasi" : null}
+                      </p>
+                    ) : null}
+                    {isOwnerPpk && pemilihanStage?.status === "NOT_STARTED" && pemilihanStage.notes ? (
+                      <p className="mb-2 rounded-lg border border-orange-200 bg-orange-50 p-2 text-xs text-orange-700">
+                        Dikembalikan sebelumnya: {pemilihanStage.notes}
+                      </p>
+                    ) : null}
+                    {isOwnerPpk ? (
+                      <AssignPejabatForm packageId={pkg.id} options={pejabatOptions} />
+                    ) : !pemilihanStage?.pic ? (
+                      <p className="text-xs text-slate-500">Belum ditugaskan.</p>
+                    ) : null}
+                  </>
+                );
+              })()}
             </Card>
             {isOwnerPpk && pkg.status !== "SELESAI" && pkg.status !== "DIBATALKAN" ? (
               <Card className="p-5">
@@ -263,7 +280,10 @@ export default async function PackageDetailPage({
             });
             const canAct =
               canActOnStage(session.role, stage.stageCode) &&
-              (session.role !== "PPK" || isOwnerPpk);
+              (session.role !== "PPK" || isOwnerPpk) &&
+              stage.status !== "WAITING_ACCEPTANCE";
+            const isAssignedPejabatPengadaan =
+              session.role === "PEJABAT_PENGADAAN" && stage.picUserId === session.userId;
             return (
               <Card key={stage.id}>
                 <CardHeader
@@ -277,6 +297,34 @@ export default async function PackageDetailPage({
                   }
                 />
                 <div className="space-y-3 p-5">
+                  {stage.stageCode === "PEMILIHAN" && stage.status === "WAITING_ACCEPTANCE" ? (
+                    isAssignedPejabatPengadaan ? (
+                      <div className="space-y-2 rounded-lg border border-violet-200 bg-violet-50 p-3">
+                        <p className="text-xs text-violet-700">
+                          PPK menyerahkan paket ini untuk diproses. Reviu kelengkapan KAK/HPS pada tab Ringkasan,
+                          lalu terima penugasan untuk mulai memproses tahap Pemilihan, atau kembalikan ke PPK
+                          bila belum lengkap.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <AcceptAssignmentForm stageId={stage.id} />
+                        </div>
+                        <ReturnAssignmentForm stageId={stage.id} />
+                      </div>
+                    ) : !isPenyedia ? (
+                      <p className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs text-violet-700">
+                        Menunggu konfirmasi penerimaan dari {stage.pic?.fullName ?? "Pejabat Pengadaan"}.
+                      </p>
+                    ) : null
+                  ) : null}
+                  {stage.stageCode === "PEMILIHAN" &&
+                  stage.status === "NOT_STARTED" &&
+                  stage.notes &&
+                  !isPenyedia &&
+                  session.role !== "PEJABAT_PENGADAAN" ? (
+                    <p className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-xs text-orange-700">
+                      Penugasan sebelumnya dikembalikan Pejabat Pengadaan: {stage.notes}
+                    </p>
+                  ) : null}
                   {(() => {
                     // Penyedia never sees internal drafting/review documents
                     // (KAK, HPS breakdown, BA Reviu/Evaluasi notes, etc.) —

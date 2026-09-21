@@ -9,6 +9,8 @@ import {
   submitStageForApprovalAction,
   decideStageApprovalAction,
   assignPejabatPengadaanAction,
+  acceptPejabatPengadaanAssignmentAction,
+  returnPejabatPengadaanAssignmentAction,
   approveStageDocumentAction,
   cancelPackageAction,
   type FormState as PkgFormState,
@@ -232,6 +234,45 @@ export function AssignPejabatForm({ packageId, options }: { packageId: string; o
       <Button type="submit" variant="secondary" disabled={pending} className="text-xs">Tugaskan</Button>
       {state.error ? <p className="w-full text-xs text-red-600">{state.error}</p> : null}
       {state.success ? <p className="w-full text-xs text-emerald-600">{state.success}</p> : null}
+    </form>
+  );
+}
+
+export function AcceptAssignmentForm({ stageId }: { stageId: string }) {
+  const [state, formAction, pending] = useActionState<PkgFormState, FormData>(
+    acceptPejabatPengadaanAssignmentAction,
+    empty
+  );
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="stageId" value={stageId} />
+      <Button type="submit" disabled={pending} className="text-xs">
+        {pending ? "Memproses..." : "Terima Penugasan"}
+      </Button>
+      <ErrorSuccess state={state} />
+    </form>
+  );
+}
+
+export function ReturnAssignmentForm({ stageId }: { stageId: string }) {
+  const [state, formAction, pending] = useActionState<PkgFormState, FormData>(
+    returnPejabatPengadaanAssignmentAction,
+    empty
+  );
+  return (
+    <form action={formAction} className="space-y-2">
+      <input type="hidden" name="stageId" value={stageId} />
+      <textarea
+        name="reason"
+        rows={2}
+        required
+        placeholder="Alasan pengembalian ke PPK (wajib) — mis. kelengkapan KAK/HPS belum sesuai"
+        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs outline-none focus:border-red-500"
+      />
+      <Button type="submit" variant="danger" disabled={pending} className="text-xs">
+        {pending ? "Memproses..." : "Kembalikan ke PPK"}
+      </Button>
+      <ErrorSuccess state={state} />
     </form>
   );
 }

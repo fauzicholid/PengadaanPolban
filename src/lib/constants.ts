@@ -72,6 +72,7 @@ export const PACKAGE_STATUS_LABELS: Record<string, string> = {
 
 export const STAGE_STATUS_LABELS: Record<string, string> = {
   NOT_STARTED: "Belum Dimulai",
+  WAITING_ACCEPTANCE: "Menunggu Konfirmasi",
   IN_PROGRESS: "Sedang Diproses",
   WAITING_DOCUMENT: "Menunggu Dokumen",
   WAITING_APPROVAL: "Menunggu Persetujuan",
@@ -84,6 +85,7 @@ export const STAGE_STATUS_LABELS: Record<string, string> = {
 
 export const STAGE_STATUS_COLORS: Record<string, string> = {
   NOT_STARTED: "bg-slate-100 text-slate-600 border-slate-200",
+  WAITING_ACCEPTANCE: "bg-violet-50 text-violet-700 border-violet-200",
   IN_PROGRESS: "bg-blue-50 text-blue-700 border-blue-200",
   WAITING_DOCUMENT: "bg-amber-50 text-amber-700 border-amber-200",
   WAITING_APPROVAL: "bg-violet-50 text-violet-700 border-violet-200",
@@ -147,6 +149,73 @@ export const BID_STATUS_LABELS: Record<string, string> = {
   LOSER: "Tidak Terpilih",
   WITHDRAWN: "Mengundurkan Diri",
 };
+
+// Jenis dan metode pengadaan sesuai Perpres 16/2018 jo. Perpres 12/2021 jo.
+// Perpres 46/2025 Pasal 3, 38, dan 41. Metode tersedia bergantung pada jenis
+// pengadaan yang dipilih (mis. Jasa Konsultansi tidak mengenal Tender/Tender
+// Cepat/E-purchasing). Nilai final tetap wajib divalidasi terhadap SOP/PBJ
+// instansi — lihat catatan kepatuhan pada PRD.
+export const PROCUREMENT_TYPES = [
+  "Barang",
+  "Pekerjaan Konstruksi",
+  "Jasa Konsultansi",
+  "Jasa Lainnya",
+] as const;
+export type ProcurementType = (typeof PROCUREMENT_TYPES)[number];
+
+const BARANG_KONSTRUKSI_JASA_LAINNYA_METHODS = [
+  "E-purchasing",
+  "Pengadaan Langsung",
+  "Penunjukan Langsung",
+  "Tender Cepat",
+  "Tender",
+];
+
+export const PROCUREMENT_METHODS_BY_TYPE: Record<ProcurementType, string[]> = {
+  Barang: BARANG_KONSTRUKSI_JASA_LAINNYA_METHODS,
+  "Pekerjaan Konstruksi": BARANG_KONSTRUKSI_JASA_LAINNYA_METHODS,
+  "Jasa Lainnya": BARANG_KONSTRUKSI_JASA_LAINNYA_METHODS,
+  "Jasa Konsultansi": ["Seleksi", "Pengadaan Langsung", "Penunjukan Langsung"],
+};
+
+// Ambang nilai pagu (Pasal 38 ayat 4 & Pasal 41 ayat 3) untuk menyarankan
+// metode default; pengguna tetap dapat memilih metode lain sesuai kondisi
+// (mis. Penunjukan Langsung/Tender Cepat/E-purchasing pada kondisi khusus).
+export function suggestProcurementMethod(
+  type: string,
+  budgetCeiling: number
+): string | null {
+  if (!PROCUREMENT_TYPES.includes(type as ProcurementType)) return null;
+  if (!Number.isFinite(budgetCeiling) || budgetCeiling <= 0) return null;
+  if (type === "Jasa Konsultansi") {
+    return budgetCeiling <= 100_000_000 ? "Pengadaan Langsung" : "Seleksi";
+  }
+  return budgetCeiling <= 200_000_000 ? "Pengadaan Langsung" : "Tender";
+}
+
+// Best-effort canonicalization for bulk-imported (CSV) data, which may use
+// slightly different casing/spacing than the dropdowns produce. Falls back
+// to the original value when it doesn't match a known option, so legacy or
+// unrecognized data isn't silently dropped.
+export function normalizeProcurementType(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const match = PROCUREMENT_TYPES.find((t) => t.toLowerCase() === trimmed.toLowerCase());
+  return match ?? trimmed;
+}
+
+export function normalizeProcurementMethod(
+  type: string | null | undefined,
+  value: string | null | undefined
+): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const options = type ? PROCUREMENT_METHODS_BY_TYPE[type as ProcurementType] : undefined;
+  const match = options?.find((m) => m.toLowerCase() === trimmed.toLowerCase());
+  return match ?? trimmed;
+}
 
 // Tahapan baku pengadaan beserta bobot progres (total 100%) sesuai PRD §16.
 export interface StageBlueprint {

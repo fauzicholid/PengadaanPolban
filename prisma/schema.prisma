@@ -79,6 +79,7 @@ enum StageCode {
 
 enum StageStatus {
   NOT_STARTED
+  WAITING_ACCEPTANCE
   IN_PROGRESS
   WAITING_DOCUMENT
   WAITING_APPROVAL
@@ -183,15 +184,15 @@ model Organization {
 }
 
 model WorkUnit {
-  id             String   @id @default(uuid())
-  organizationId String   @map("organization_id")
-  parentId       String?  @map("parent_id")
+  id             String  @id @default(uuid())
+  organizationId String  @map("organization_id")
+  parentId       String? @map("parent_id")
   code           String
   name           String
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  parent       WorkUnit?    @relation("WorkUnitParent", fields: [parentId], references: [id])
-  children     WorkUnit[]   @relation("WorkUnitParent")
+  organization Organization  @relation(fields: [organizationId], references: [id])
+  parent       WorkUnit?     @relation("WorkUnitParent", fields: [parentId], references: [id])
+  children     WorkUnit[]    @relation("WorkUnitParent")
   appointments Appointment[]
   rups         Rup[]
 
@@ -209,23 +210,23 @@ model User {
   mfaEnabled   Boolean    @default(false) @map("mfa_enabled")
   createdAt    DateTime   @default(now()) @map("created_at")
 
-  appointments        Appointment[]
-  vendorUsers         VendorUser[]
-  pkgAsPpk             ProcurementPackage[]      @relation("PackagePpk")
-  stagesAsPic          PackageStage[]            @relation("StagePic")
-  stageApprovals       StageApproval[]
-  uploadedStageDocs    StageDocument[]           @relation("StageDocUploader")
-  uploadedVendorDocs   VendorLegalDocument[]     @relation("VendorDocUploader")
-  vendorVerifications  VendorVerification[]      @relation("VendorVerifier")
-  spiRequestsMade      SpiReviewRequest[]        @relation("SpiRequester")
-  spiReviewsAsReviewer SpiReview[]                @relation("SpiReviewer")
-  spiFindingsAsPic     SpiFinding[]              @relation("FindingPic")
-  spiFollowupsSubmitted SpiFollowup[]            @relation("FollowupSubmitter")
-  spiFollowupsVerified  SpiFollowup[]            @relation("FollowupVerifier")
-  auditLogs            AuditLog[]
-  notifications        Notification[]
-  documentSignatures   DocumentSignature[] @relation("DocumentSigner")
-  uploadedDocumentTemplates DocumentTemplate[] @relation("DocumentTemplateUploader")
+  appointments              Appointment[]
+  vendorUsers               VendorUser[]
+  pkgAsPpk                  ProcurementPackage[]  @relation("PackagePpk")
+  stagesAsPic               PackageStage[]        @relation("StagePic")
+  stageApprovals            StageApproval[]
+  uploadedStageDocs         StageDocument[]       @relation("StageDocUploader")
+  uploadedVendorDocs        VendorLegalDocument[] @relation("VendorDocUploader")
+  vendorVerifications       VendorVerification[]  @relation("VendorVerifier")
+  spiRequestsMade           SpiReviewRequest[]    @relation("SpiRequester")
+  spiReviewsAsReviewer      SpiReview[]           @relation("SpiReviewer")
+  spiFindingsAsPic          SpiFinding[]          @relation("FindingPic")
+  spiFollowupsSubmitted     SpiFollowup[]         @relation("FollowupSubmitter")
+  spiFollowupsVerified      SpiFollowup[]         @relation("FollowupVerifier")
+  auditLogs                 AuditLog[]
+  notifications             Notification[]
+  documentSignatures        DocumentSignature[]   @relation("DocumentSigner")
+  uploadedDocumentTemplates DocumentTemplate[]    @relation("DocumentTemplateUploader")
 
   @@map("users")
 }
@@ -296,13 +297,13 @@ model Vendor {
   verificationStatus VendorStatus @default(DRAFT) @map("verification_status")
   createdAt          DateTime     @default(now()) @map("created_at")
 
-  users          VendorUser[]
-  kbli           VendorKbli[]
-  legalDocuments VendorLegalDocument[]
-  verifications  VendorVerification[]
-  invitations    ProcurementInvitation[]
-  bids           Bid[]
-  contracts      Contract[]
+  users              VendorUser[]
+  kbli               VendorKbli[]
+  legalDocuments     VendorLegalDocument[]
+  verifications      VendorVerification[]
+  invitations        ProcurementInvitation[]
+  bids               Bid[]
+  contracts          Contract[]
   documentSignatures DocumentSignature[]
 
   @@map("vendors")
@@ -368,12 +369,12 @@ model VendorLegalDocument {
 }
 
 model VendorVerification {
-  id           String       @id @default(uuid())
-  vendorId     String       @map("vendor_id")
-  verifierId   String?      @map("verifier_id")
-  decision     VendorStatus
-  notes        String?
-  decidedAt    DateTime     @default(now()) @map("decided_at")
+  id         String       @id @default(uuid())
+  vendorId   String       @map("vendor_id")
+  verifierId String?      @map("verifier_id")
+  decision   VendorStatus
+  notes      String?
+  decidedAt  DateTime     @default(now()) @map("decided_at")
 
   vendor   Vendor @relation(fields: [vendorId], references: [id])
   verifier User?  @relation("VendorVerifier", fields: [verifierId], references: [id])
@@ -386,21 +387,21 @@ model VendorVerification {
 // ---------------------------------------------------------------------------
 
 model Rup {
-  id                 String    @id @default(uuid())
-  workUnitId         String    @map("work_unit_id")
-  externalRupId      String    @map("external_rup_id")
-  fiscalYear         Int       @map("fiscal_year")
-  packageName        String    @map("package_name")
-  procurementType    String?   @map("procurement_type")
-  procurementMethod  String?   @map("procurement_method")
-  budgetCeiling      Decimal   @default(0) @map("budget_ceiling") @db.Decimal(18, 2)
-  sourceFund         String?   @map("source_fund")
-  location           String?
-  volume             String?
-  schedule           String?
-  source             String    @default("MANUAL_IMPORT") // API_SIRUP | MANUAL_IMPORT
-  syncAt             DateTime? @map("sync_at")
-  createdAt          DateTime  @default(now()) @map("created_at")
+  id                String    @id @default(uuid())
+  workUnitId        String    @map("work_unit_id")
+  externalRupId     String    @map("external_rup_id")
+  fiscalYear        Int       @map("fiscal_year")
+  packageName       String    @map("package_name")
+  procurementType   String?   @map("procurement_type")
+  procurementMethod String?   @map("procurement_method")
+  budgetCeiling     Decimal   @default(0) @map("budget_ceiling") @db.Decimal(18, 2)
+  sourceFund        String?   @map("source_fund")
+  location          String?
+  volume            String?
+  schedule          String?
+  source            String    @default("MANUAL_IMPORT") // API_SIRUP | MANUAL_IMPORT
+  syncAt            DateTime? @map("sync_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
 
   workUnit WorkUnit             @relation(fields: [workUnitId], references: [id])
   packages ProcurementPackage[]
@@ -414,34 +415,35 @@ model Rup {
 // ---------------------------------------------------------------------------
 
 model ProcurementPackage {
-  id               String        @id @default(uuid())
-  rupId            String        @map("rup_id")
-  packageCode      String        @unique @map("package_code")
-  ppkUserId        String        @map("ppk_user_id")
-  packageName      String        @map("package_name")
-  procurementType  String?       @map("procurement_type")
-  status           PackageStatus @default(DRAFT)
-  progressPercent  Decimal       @default(0) @map("progress_percent") @db.Decimal(5, 2)
-  budgetCeiling    Decimal       @default(0) @map("budget_ceiling") @db.Decimal(18, 2)
-  hpsValue         Decimal?      @map("hps_value") @db.Decimal(18, 2)
-  contractValue    Decimal?      @map("contract_value") @db.Decimal(18, 2)
-  kakSummary       String?       @map("kak_summary")
-  specification    String?
-  contractDraft    String?       @map("contract_draft")
-  requirements     String?
-  scheduleNotes    String?       @map("schedule_notes")
-  cancelledReason  String?       @map("cancelled_reason")
-  createdAt        DateTime      @default(now()) @map("created_at")
-  updatedAt        DateTime      @updatedAt @map("updated_at")
+  id                String        @id @default(uuid())
+  rupId             String        @map("rup_id")
+  packageCode       String        @unique @map("package_code")
+  ppkUserId         String        @map("ppk_user_id")
+  packageName       String        @map("package_name")
+  procurementType   String?       @map("procurement_type")
+  procurementMethod String?       @map("procurement_method")
+  status            PackageStatus @default(DRAFT)
+  progressPercent   Decimal       @default(0) @map("progress_percent") @db.Decimal(5, 2)
+  budgetCeiling     Decimal       @default(0) @map("budget_ceiling") @db.Decimal(18, 2)
+  hpsValue          Decimal?      @map("hps_value") @db.Decimal(18, 2)
+  contractValue     Decimal?      @map("contract_value") @db.Decimal(18, 2)
+  kakSummary        String?       @map("kak_summary")
+  specification     String?
+  contractDraft     String?       @map("contract_draft")
+  requirements      String?
+  scheduleNotes     String?       @map("schedule_notes")
+  cancelledReason   String?       @map("cancelled_reason")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
 
-  rup           Rup                    @relation(fields: [rupId], references: [id])
-  ppk           User                   @relation("PackagePpk", fields: [ppkUserId], references: [id])
-  kbli          PackageKbli[]
-  stages        PackageStage[]
-  invitations   ProcurementInvitation[]
-  bids          Bid[]
-  contract      Contract?
-  spiRequests   SpiReviewRequest[]
+  rup         Rup                     @relation(fields: [rupId], references: [id])
+  ppk         User                    @relation("PackagePpk", fields: [ppkUserId], references: [id])
+  kbli        PackageKbli[]
+  stages      PackageStage[]
+  invitations ProcurementInvitation[]
+  bids        Bid[]
+  contract    Contract?
+  spiRequests SpiReviewRequest[]
 
   @@map("procurement_packages")
 }
@@ -470,10 +472,10 @@ model PackageStage {
   completedAt DateTime?   @map("completed_at")
   notes       String?
 
-  package    ProcurementPackage @relation(fields: [packageId], references: [id])
-  pic        User?              @relation("StagePic", fields: [picUserId], references: [id])
-  documents  StageDocument[]
-  approvals  StageApproval[]
+  package   ProcurementPackage @relation(fields: [packageId], references: [id])
+  pic       User?              @relation("StagePic", fields: [picUserId], references: [id])
+  documents StageDocument[]
+  approvals StageApproval[]
 
   @@unique([packageId, stageCode])
   @@map("package_stages")
@@ -556,12 +558,12 @@ model StageApproval {
 // ---------------------------------------------------------------------------
 
 model ProcurementInvitation {
-  id          String   @id @default(uuid())
-  packageId   String   @map("package_id")
-  vendorId    String   @map("vendor_id")
-  invitedAt   DateTime @default(now()) @map("invited_at")
-  deadlineAt  DateTime? @map("deadline_at")
-  responded   Boolean  @default(false)
+  id         String    @id @default(uuid())
+  packageId  String    @map("package_id")
+  vendorId   String    @map("vendor_id")
+  invitedAt  DateTime  @default(now()) @map("invited_at")
+  deadlineAt DateTime? @map("deadline_at")
+  responded  Boolean   @default(false)
 
   package ProcurementPackage @relation(fields: [packageId], references: [id])
   vendor  Vendor             @relation(fields: [vendorId], references: [id])
@@ -571,18 +573,18 @@ model ProcurementInvitation {
 }
 
 model Bid {
-  id            String    @id @default(uuid())
-  packageId     String    @map("package_id")
-  vendorId      String    @map("vendor_id")
-  offeredValue  Decimal?  @map("offered_value") @db.Decimal(18, 2)
-  status        BidStatus @default(DRAFT)
-  adminNotes    String?   @map("admin_notes")
-  technicalNotes String?  @map("technical_notes")
-  technicalScore Decimal? @map("technical_score") @db.Decimal(5, 2)
-  submittedAt   DateTime? @map("submitted_at")
+  id             String    @id @default(uuid())
+  packageId      String    @map("package_id")
+  vendorId       String    @map("vendor_id")
+  offeredValue   Decimal?  @map("offered_value") @db.Decimal(18, 2)
+  status         BidStatus @default(DRAFT)
+  adminNotes     String?   @map("admin_notes")
+  technicalNotes String?   @map("technical_notes")
+  technicalScore Decimal?  @map("technical_score") @db.Decimal(5, 2)
+  submittedAt    DateTime? @map("submitted_at")
 
-  package ProcurementPackage @relation(fields: [packageId], references: [id])
-  vendor  Vendor             @relation(fields: [vendorId], references: [id])
+  package     ProcurementPackage @relation(fields: [packageId], references: [id])
+  vendor      Vendor             @relation(fields: [vendorId], references: [id])
   evaluations Evaluation[]
 
   @@unique([packageId, vendorId])
@@ -590,11 +592,11 @@ model Bid {
 }
 
 model Evaluation {
-  id        String   @id @default(uuid())
-  bidId     String   @map("bid_id")
-  stage     String   // ADMINISTRASI | TEKNIS | HARGA
-  result    String   // LULUS | TIDAK_LULUS
-  notes     String?
+  id          String   @id @default(uuid())
+  bidId       String   @map("bid_id")
+  stage       String // ADMINISTRASI | TEKNIS | HARGA
+  result      String // LULUS | TIDAK_LULUS
+  notes       String?
   evaluatedAt DateTime @default(now()) @map("evaluated_at")
 
   bid Bid @relation(fields: [bidId], references: [id])
@@ -626,13 +628,13 @@ model Contract {
 }
 
 model ContractMilestone {
-  id          String    @id @default(uuid())
-  contractId  String    @map("contract_id")
-  name        String
-  targetDate  DateTime  @map("target_date")
-  completedAt DateTime? @map("completed_at")
-  progressPercent Decimal @default(0) @map("progress_percent") @db.Decimal(5, 2)
-  notes       String?
+  id              String    @id @default(uuid())
+  contractId      String    @map("contract_id")
+  name            String
+  targetDate      DateTime  @map("target_date")
+  completedAt     DateTime? @map("completed_at")
+  progressPercent Decimal   @default(0) @map("progress_percent") @db.Decimal(5, 2)
+  notes           String?
 
   contract Contract @relation(fields: [contractId], references: [id])
 
@@ -640,13 +642,13 @@ model ContractMilestone {
 }
 
 model ContractAddendum {
-  id          String   @id @default(uuid())
-  contractId  String   @map("contract_id")
-  reason      String
-  changes     String
-  newValue    Decimal? @map("new_value") @db.Decimal(18, 2)
-  newEndDate  DateTime? @map("new_end_date")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id         String    @id @default(uuid())
+  contractId String    @map("contract_id")
+  reason     String
+  changes    String
+  newValue   Decimal?  @map("new_value") @db.Decimal(18, 2)
+  newEndDate DateTime? @map("new_end_date")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
   contract Contract @relation(fields: [contractId], references: [id])
 
@@ -658,13 +660,13 @@ model ContractAddendum {
 // ---------------------------------------------------------------------------
 
 model SpiReviewRequest {
-  id           String         @id @default(uuid())
-  packageId    String         @map("package_id")
-  requestedBy  String         @map("requested_by")
-  requestType  SpiRequestType @map("request_type")
-  reason       String?
-  scope        String?
-  requestedAt  DateTime       @default(now()) @map("requested_at")
+  id          String         @id @default(uuid())
+  packageId   String         @map("package_id")
+  requestedBy String         @map("requested_by")
+  requestType SpiRequestType @map("request_type")
+  reason      String?
+  scope       String?
+  requestedAt DateTime       @default(now()) @map("requested_at")
 
   package   ProcurementPackage @relation(fields: [packageId], references: [id])
   requester User               @relation("SpiRequester", fields: [requestedBy], references: [id])
@@ -749,14 +751,14 @@ model AuditLog {
 }
 
 model Notification {
-  id        String            @id @default(uuid())
-  userId    String            @map("user_id")
+  id        String           @id @default(uuid())
+  userId    String           @map("user_id")
   type      NotificationType
   title     String
   message   String
   link      String?
-  readAt    DateTime?         @map("read_at")
-  createdAt DateTime          @default(now()) @map("created_at")
+  readAt    DateTime?        @map("read_at")
+  createdAt DateTime         @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id])
 
@@ -765,13 +767,13 @@ model Notification {
 }
 
 model IntegrationLog {
-  id          String   @id @default(uuid())
-  service     String   // SIRUP | OSS
-  direction   String   // PULL | PUSH | IMPORT
-  status      String   // SUCCESS | FAILED
-  payload     Json?
-  message     String?
-  createdAt   DateTime @default(now()) @map("created_at")
+  id        String   @id @default(uuid())
+  service   String // SIRUP | OSS
+  direction String // PULL | PUSH | IMPORT
+  status    String // SUCCESS | FAILED
+  payload   Json?
+  message   String?
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@map("integration_logs")
 }

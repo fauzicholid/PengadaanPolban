@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState, type ChangeEvent } from "react";
 import { createRupAction, importRupBatchAction, type FormState, type ImportState } from "@/actions/rup";
 import { Button } from "@/components/ui";
+import { ProcurementTypeMethodFields } from "@/components/procurement-type-method-fields";
 
 const initialState: FormState = {};
 const initialImportState: ImportState = {};
@@ -55,6 +56,7 @@ export function ImportRupCsvForm() {
 
 export function RupForm({ workUnits }: { workUnits: { id: string; name: string }[] }) {
   const [state, formAction, pending] = useActionState(createRupAction, initialState);
+  const [budgetCeiling, setBudgetCeiling] = useState<number | null>(null);
 
   return (
     <form action={formAction} className="space-y-4">
@@ -79,13 +81,16 @@ export function RupForm({ workUnits }: { workUnits: { id: string; name: string }
         </select>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Jenis Pengadaan" name="procurementType" placeholder="Barang / Pekerjaan Konstruksi / Jasa Konsultansi / Jasa Lainnya" />
-        <Field label="Cara Pengadaan" name="procurementMethod" placeholder="Tender / Pengadaan Langsung / dll." />
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Pagu Anggaran (Rp)" name="budgetCeiling" type="number" required />
+        <Field
+          label="Pagu Anggaran (Rp)"
+          name="budgetCeiling"
+          type="number"
+          required
+          onChange={(e) => setBudgetCeiling(e.target.value ? Number(e.target.value) : null)}
+        />
         <Field label="Sumber Dana" name="sourceFund" placeholder="BLU / RM / PNBP" />
       </div>
+      <ProcurementTypeMethodFields budgetCeiling={budgetCeiling} />
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Lokasi" name="location" />
         <Field label="Volume" name="volume" placeholder="1 paket" />
@@ -110,6 +115,7 @@ function Field({
   required,
   placeholder,
   defaultValue,
+  onChange,
 }: {
   label: string;
   name: string;
@@ -117,6 +123,7 @@ function Field({
   required?: boolean;
   placeholder?: string;
   defaultValue?: string | number;
+  onChange?: (e: ChangeEvent<HTMLInputElement>) => void;
 }) {
   return (
     <div>
@@ -129,6 +136,7 @@ function Field({
         required={required}
         placeholder={placeholder}
         defaultValue={defaultValue}
+        onChange={onChange}
         className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
       />
     </div>

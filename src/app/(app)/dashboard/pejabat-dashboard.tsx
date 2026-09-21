@@ -19,6 +19,10 @@ export async function PejabatDashboard({ session }: { session: SessionPayload })
   const packageIds = [...new Set(myStages.map((s) => s.packageId))];
   const paketMasuk = packageIds.length;
 
+  const waitingAcceptance = myStages.filter(
+    (s) => s.stageCode === "PEMILIHAN" && s.status === "WAITING_ACCEPTANCE"
+  );
+
   const evaluasiStages = myStages.filter((s) => s.stageCode === "EVALUASI" && s.status !== "COMPLETED" && s.status !== "CANCELLED");
   const menungguBa = myStages.filter(
     (s) => !s.documents.some((d) => d.required && (d.status === "APPROVED" || d.status === "FINAL"))
@@ -49,10 +53,29 @@ export async function PejabatDashboard({ session }: { session: SessionPayload })
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Paket Masuk" value={formatNumber(paketMasuk)} />
+        <StatCard
+          label="Menunggu Konfirmasi"
+          value={formatNumber(waitingAcceptance.length)}
+          tone={waitingAcceptance.length > 0 ? "warning" : "default"}
+        />
         <StatCard label="Evaluasi" value={formatNumber(evaluasiStages.length)} />
         <StatCard label="Menunggu BA" value={formatNumber(menungguBa)} tone={menungguBa > 0 ? "warning" : "default"} />
         <StatCard label="Terlambat" value={formatNumber(overdueCount)} tone={overdueCount > 0 ? "danger" : "default"} />
       </div>
+
+      {waitingAcceptance.length > 0 ? (
+        <Card>
+          <CardHeader title="Menunggu Konfirmasi Penerimaan" subtitle="Paket yang baru diserahkan PPK, perlu Anda terima atau kembalikan" />
+          <div className="divide-y divide-slate-100 text-sm">
+            {waitingAcceptance.map((s) => (
+              <Link key={s.id} href={`/packages/${s.packageId}?tab=dokumen`} className="flex items-center justify-between px-5 py-2.5 hover:bg-slate-50">
+                <span>{s.package.packageCode} — {s.package.packageName}</span>
+                <StatusBadge kind="stage" status={s.status} />
+              </Link>
+            ))}
+          </div>
+        </Card>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

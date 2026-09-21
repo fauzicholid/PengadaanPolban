@@ -6,6 +6,12 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
 import { parseCsv } from "@/lib/csv";
+import {
+  PROCUREMENT_TYPES,
+  PROCUREMENT_METHODS_BY_TYPE,
+  normalizeProcurementType,
+  normalizeProcurementMethod,
+} from "@/lib/constants";
 
 export interface FormState {
   error?: string;
@@ -40,6 +46,16 @@ export async function createRupAction(
 
   if (!workUnitId || !externalRupId || !fiscalYear || !packageName) {
     return { error: "Unit kerja, RUP ID, tahun anggaran, dan nama paket wajib diisi." };
+  }
+  if (procurementType && !PROCUREMENT_TYPES.includes(procurementType as (typeof PROCUREMENT_TYPES)[number])) {
+    return { error: "Jenis pengadaan tidak valid." };
+  }
+  if (
+    procurementMethod &&
+    procurementType &&
+    !PROCUREMENT_METHODS_BY_TYPE[procurementType as keyof typeof PROCUREMENT_METHODS_BY_TYPE]?.includes(procurementMethod)
+  ) {
+    return { error: "Metode pengadaan tidak sesuai dengan jenis pengadaan yang dipilih." };
   }
 
   const existing = await prisma.rup.findUnique({
@@ -142,13 +158,16 @@ export async function importRupBatchAction(
       continue;
     }
 
+    const procurementType = normalizeProcurementType(row["procurement_type"]);
+    const procurementMethod = normalizeProcurementMethod(procurementType, row["procurement_method"]);
+
     await prisma.rup.upsert({
       where: { externalRupId_fiscalYear: { externalRupId, fiscalYear } },
       update: {
         workUnitId: workUnit.id,
         packageName,
-        procurementType: row["procurement_type"]?.trim() || null,
-        procurementMethod: row["procurement_method"]?.trim() || null,
+        procurementType,
+        procurementMethod,
         budgetCeiling,
         sourceFund: row["source_fund"]?.trim() || null,
         location: row["location"]?.trim() || null,
@@ -162,8 +181,8 @@ export async function importRupBatchAction(
         externalRupId,
         fiscalYear,
         packageName,
-        procurementType: row["procurement_type"]?.trim() || null,
-        procurementMethod: row["procurement_method"]?.trim() || null,
+        procurementType,
+        procurementMethod,
         budgetCeiling,
         sourceFund: row["source_fund"]?.trim() || null,
         location: row["location"]?.trim() || null,

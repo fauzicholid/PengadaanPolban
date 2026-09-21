@@ -6,7 +6,12 @@ import { prisma } from "@/lib/prisma";
 import { requireRole, requireSession } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
 import { notify, notifyMany } from "@/lib/notify";
-import { STAGE_BLUEPRINT, STAGE_TO_PACKAGE_STATUS } from "@/lib/constants";
+import {
+  STAGE_BLUEPRINT,
+  STAGE_TO_PACKAGE_STATUS,
+  PROCUREMENT_TYPES,
+  PROCUREMENT_METHODS_BY_TYPE,
+} from "@/lib/constants";
 import { canCompleteStage, computeProgress } from "@/lib/workflow";
 import { canActOnStage, STAGE_ACTOR_ROLES } from "@/lib/stage-access";
 import { isHighValuePackage } from "@/lib/risk";
@@ -29,9 +34,20 @@ export async function createPackageFromRupAction(
   const rupId = String(formData.get("rupId") ?? "");
   const packageName = String(formData.get("packageName") ?? "").trim();
   const procurementType = String(formData.get("procurementType") ?? "");
+  const procurementMethod = String(formData.get("procurementMethod") ?? "");
 
   if (!rupId || !packageName) {
     return { error: "RUP dan nama paket wajib diisi." };
+  }
+  if (procurementType && !PROCUREMENT_TYPES.includes(procurementType as (typeof PROCUREMENT_TYPES)[number])) {
+    return { error: "Jenis pengadaan tidak valid." };
+  }
+  if (
+    procurementMethod &&
+    procurementType &&
+    !PROCUREMENT_METHODS_BY_TYPE[procurementType as keyof typeof PROCUREMENT_METHODS_BY_TYPE]?.includes(procurementMethod)
+  ) {
+    return { error: "Metode pengadaan tidak sesuai dengan jenis pengadaan yang dipilih." };
   }
 
   const rup = await prisma.rup.findUnique({ where: { id: rupId }, include: { workUnit: true } });
@@ -47,6 +63,7 @@ export async function createPackageFromRupAction(
       ppkUserId: session.userId,
       packageName,
       procurementType: procurementType || rup.procurementType,
+      procurementMethod: procurementMethod || rup.procurementMethod,
       status: "PERSIAPAN",
       budgetCeiling: rup.budgetCeiling,
       stages: {
@@ -141,6 +158,9 @@ export async function uploadStageDocumentAction(
   if (!stage) return { error: "Tahapan tidak ditemukan." };
   if (!canActOnStage(session.role, stage.stageCode) || (session.role === "PPK" && stage.package.ppkUserId !== session.userId)) {
     return { error: "Anda tidak berwenang mengunggah dokumen pada tahap ini." };
+  }
+  if (stage.status === "WAITING_ACCEPTANCE") {
+    return { error: "Terima penugasan terlebih dahulu sebelum memproses tahap ini." };
   }
   if (!documentType || !fileUri) return { error: "Jenis dokumen dan berkas wajib diisi." };
 
@@ -268,6 +288,9 @@ export async function completeStageAction(
     return { error: "Anda tidak berwenang menyelesaikan tahap ini." };
   }
   if (stage.status === "COMPLETED") return { error: "Tahap sudah selesai." };
+  if (stage.status === "WAITING_ACCEPTANCE") {
+    return { error: "Terima penugasan terlebih dahulu sebelum menyelesaikan tahap ini." };
+  }
 
   const gate = canCompleteStage(stage.stageCode, stage.documents, stage.approvals, {
     requiresApprovalOverride: stage.stageCode === "REVIU" ? isHighValuePackage(stage.package) : undefined,
@@ -449,6 +472,11 @@ export async function decideStageApprovalAction(
   return { success: "Keputusan reviu tersimpan." };
 }
 
+// PPK menyerahkan paket siap proses kepada Pejabat Pengadaan yang sudah
+// ditetapkan PA/KPA (via Admin > Penugasan). Tahap PEMILIHAN dijeda pada
+// status Menunggu Konfirmasi sampai Pejabat Pengadaan menerima atau
+// mengembalikan penugasan (lihat acceptPejabatPengadaanAssignmentAction /
+// returnPejabatPengadaanAssignmentAction), sesuai alur pada SRS §3.3.
 export async function assignPejabatPengadaanAction(
   _prev: FormState,
   formData: FormData
@@ -463,17 +491,31 @@ export async function assignPejabatPengadaanAction(
   }
   if (!userId) return { error: "Pilih Pejabat Pengadaan." };
 
-  await prisma.packageStage.updateMany({
-    where: { packageId, stageCode: { in: ["PEMILIHAN", "EVALUASI", "NEGOSIASI"] } },
-    data: { picUserId: userId },
+  const pemilihanStage = await prisma.packageStage.findFirst({
+    where: { packageId, stageCode: "PEMILIHAN" },
   });
+  if (!pemilihanStage) return { error: "Tahap Pemilihan tidak ditemukan." };
+  if (["COMPLETED", "CANCELLED"].includes(pemilihanStage.status)) {
+    return { error: "Tahap Pemilihan sudah selesai/dibatalkan sehingga tidak dapat ditugaskan ulang." };
+  }
+
+  await prisma.$transaction([
+    prisma.packageStage.update({
+      where: { id: pemilihanStage.id },
+      data: { picUserId: userId, status: "WAITING_ACCEPTANCE", notes: null },
+    }),
+    prisma.packageStage.updateMany({
+      where: { packageId, stageCode: { in: ["EVALUASI", "NEGOSIASI"] } },
+      data: { picUserId: userId },
+    }),
+  ]);
 
   await notify({
     userId,
     type: "GENERAL",
     title: "Penugasan Paket",
-    message: `Anda ditugaskan sebagai Pejabat Pengadaan pada paket ${pkg.packageCode}.`,
-    link: `/packages/${packageId}`,
+    message: `Anda ditugaskan sebagai Pejabat Pengadaan pada paket ${pkg.packageCode}. Mohon konfirmasi penerimaan.`,
+    link: `/packages/${packageId}?tab=dokumen`,
   });
 
   await writeAudit({
@@ -485,7 +527,104 @@ export async function assignPejabatPengadaanAction(
   });
 
   revalidatePath(`/packages/${packageId}`);
-  return { success: "Pejabat Pengadaan berhasil ditugaskan." };
+  return { success: "Pejabat Pengadaan berhasil ditugaskan, menunggu konfirmasi penerimaan." };
+}
+
+export async function acceptPejabatPengadaanAssignmentAction(
+  _prev: FormState,
+  formData: FormData
+): Promise<FormState> {
+  const session = await requireRole(["PEJABAT_PENGADAAN"]);
+  const stageId = String(formData.get("stageId") ?? "");
+
+  const stage = await prisma.packageStage.findUnique({
+    where: { id: stageId },
+    include: { package: true },
+  });
+  if (!stage || stage.stageCode !== "PEMILIHAN") return { error: "Tahap tidak valid." };
+  if (stage.picUserId !== session.userId) {
+    return { error: "Anda bukan Pejabat Pengadaan yang ditugaskan pada paket ini." };
+  }
+  if (stage.status !== "WAITING_ACCEPTANCE") {
+    return { error: "Penugasan ini sudah diproses." };
+  }
+
+  await prisma.packageStage.update({
+    where: { id: stageId },
+    data: { status: "IN_PROGRESS", startAt: stage.startAt ?? new Date() },
+  });
+
+  await notify({
+    userId: stage.package.ppkUserId,
+    type: "GENERAL",
+    title: "Penugasan Diterima",
+    message: `Pejabat Pengadaan menerima penugasan paket ${stage.package.packageCode}.`,
+    link: `/packages/${stage.packageId}?tab=dokumen`,
+  });
+
+  await writeAudit({
+    userId: session.userId,
+    entityType: "package_stage",
+    entityId: stageId,
+    action: "ACCEPT_ASSIGNMENT",
+  });
+
+  revalidatePath(`/packages/${stage.packageId}`);
+  revalidatePath("/dashboard");
+  return { success: "Penugasan diterima. Anda dapat mulai memproses tahap Pemilihan." };
+}
+
+export async function returnPejabatPengadaanAssignmentAction(
+  _prev: FormState,
+  formData: FormData
+): Promise<FormState> {
+  const session = await requireRole(["PEJABAT_PENGADAAN"]);
+  const stageId = String(formData.get("stageId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (!reason) return { error: "Alasan pengembalian wajib diisi." };
+
+  const stage = await prisma.packageStage.findUnique({
+    where: { id: stageId },
+    include: { package: true },
+  });
+  if (!stage || stage.stageCode !== "PEMILIHAN") return { error: "Tahap tidak valid." };
+  if (stage.picUserId !== session.userId) {
+    return { error: "Anda bukan Pejabat Pengadaan yang ditugaskan pada paket ini." };
+  }
+  if (stage.status !== "WAITING_ACCEPTANCE") {
+    return { error: "Penugasan ini sudah diproses." };
+  }
+
+  await prisma.$transaction([
+    prisma.packageStage.update({
+      where: { id: stageId },
+      data: { status: "NOT_STARTED", picUserId: null, notes: reason },
+    }),
+    prisma.packageStage.updateMany({
+      where: { packageId: stage.packageId, stageCode: { in: ["EVALUASI", "NEGOSIASI"] } },
+      data: { picUserId: null },
+    }),
+  ]);
+
+  await notify({
+    userId: stage.package.ppkUserId,
+    type: "PACKAGE_RETURNED",
+    title: "Penugasan Dikembalikan",
+    message: `Pejabat Pengadaan mengembalikan penugasan paket ${stage.package.packageCode}: ${reason}`,
+    link: `/packages/${stage.packageId}?tab=ringkasan`,
+  });
+
+  await writeAudit({
+    userId: session.userId,
+    entityType: "package_stage",
+    entityId: stageId,
+    action: "RETURN_ASSIGNMENT",
+    newData: { reason },
+  });
+
+  revalidatePath(`/packages/${stage.packageId}`);
+  revalidatePath("/dashboard");
+  return { success: "Penugasan dikembalikan ke PPK." };
 }
 
 export async function cancelPackageAction(

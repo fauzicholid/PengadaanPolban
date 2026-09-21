@@ -13,7 +13,15 @@ export default async function NewPackagePage({
 
   const rups = await prisma.rup.findMany({
     orderBy: { createdAt: "desc" },
-    select: { id: true, externalRupId: true, packageName: true, budgetCeiling: true, fiscalYear: true },
+    select: {
+      id: true,
+      externalRupId: true,
+      packageName: true,
+      budgetCeiling: true,
+      fiscalYear: true,
+      procurementType: true,
+      procurementMethod: true,
+    },
   });
 
   return (

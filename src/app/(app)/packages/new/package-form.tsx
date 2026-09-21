@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import { createPackageFromRupAction, type FormState } from "@/actions/package";
 import { Button } from "@/components/ui";
 import { formatRupiah } from "@/lib/format";
+import { ProcurementTypeMethodFields } from "@/components/procurement-type-method-fields";
 
 const initialState: FormState = {};
 
@@ -13,6 +14,8 @@ interface RupOption {
   packageName: string;
   budgetCeiling: string;
   fiscalYear: number;
+  procurementType: string | null;
+  procurementMethod: string | null;
 }
 
 export function PackageForm({
@@ -23,6 +26,8 @@ export function PackageForm({
   defaultRupId?: string;
 }) {
   const [state, formAction, pending] = useActionState(createPackageFromRupAction, initialState);
+  const [rupId, setRupId] = useState(defaultRupId ?? "");
+  const selectedRup = useMemo(() => rups.find((r) => r.id === rupId), [rups, rupId]);
 
   return (
     <form action={formAction} className="space-y-4">
@@ -31,7 +36,8 @@ export function PackageForm({
         <select
           name="rupId"
           required
-          defaultValue={defaultRupId}
+          value={rupId}
+          onChange={(e) => setRupId(e.target.value)}
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
         >
           <option value="">Pilih RUP</option>
@@ -52,14 +58,15 @@ export function PackageForm({
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
         />
       </div>
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700">Jenis Pengadaan</label>
-        <input
-          name="procurementType"
-          placeholder="Barang / Pekerjaan Konstruksi / Jasa Konsultansi / Jasa Lainnya"
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
-        />
-      </div>
+      <ProcurementTypeMethodFields
+        key={rupId}
+        defaultType={selectedRup?.procurementType ?? ""}
+        defaultMethod={selectedRup?.procurementMethod ?? ""}
+        budgetCeiling={selectedRup ? Number(selectedRup.budgetCeiling) : null}
+      />
+      <p className="text-[11px] text-slate-400">
+        Terisi otomatis dari RUP yang dipilih; ubah bila metode final berbeda saat persiapan paket.
+      </p>
       {state.error ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p> : null}
       <Button type="submit" disabled={pending}>
         {pending ? "Membuat..." : "Buat Paket"}

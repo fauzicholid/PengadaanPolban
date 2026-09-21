@@ -14,7 +14,7 @@ export interface FormState {
 
 async function assertPejabatOnPackage(userId: string, packageId: string) {
   const stage = await prisma.packageStage.findFirst({
-    where: { packageId, stageCode: "PEMILIHAN", picUserId: userId },
+    where: { packageId, stageCode: "PEMILIHAN", picUserId: userId, status: { not: "WAITING_ACCEPTANCE" } },
   });
   return !!stage;
 }
